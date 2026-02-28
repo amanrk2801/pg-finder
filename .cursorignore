@@ -1,0 +1,45 @@
+# Dependency folders (Sabse zaroori)
+node_modules/
+bower_components/
+env/
+venv/
+.venv/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+bin/
+obj/
+
+# Version control
+.git/
+.svn/
+.hg/
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Heavy assets (AI images/videos ko nahi samajh payega)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.mp4
+*.pdf
+*.zip
+*.tar.gz
+
+# Secret files (Security ke liye)
+.env
+.env.*
