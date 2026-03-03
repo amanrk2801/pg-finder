@@ -1,19 +1,16 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import StorageService from '../services/StorageService';
+import { AUTH_CONFIG } from '../constants/auth';
+import { generateId } from '../utils/id';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userType, setUserType] = useState(null);
-  // Added loading state to handle the initial app launch
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
-  }, []);
-
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     try {
       const session = await StorageService.getUserSession();
       if (session) {
@@ -23,33 +20,47 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('AuthContext - Error loading user:', error);
     } finally {
-      // Ensure the app knows we're done checking, even if it failed
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadUser();
+  }, [loadUser]);
 
   const login = useCallback(async (email, password, type) => {
     try {
-      if (email === 'superadmin@pg.com' && password === 'admin123') {
-        const adminData = { email, id: 'superadmin_1', name: 'Super Admin' };
+      const normalizedEmail = email.trim().toLowerCase();
+
+      if (
+        type === 'superadmin' &&
+        AUTH_CONFIG.isSuperAdminEnabled &&
+        normalizedEmail === AUTH_CONFIG.superAdminEmail?.toLowerCase() &&
+        password === AUTH_CONFIG.superAdminPassword
+      ) {
+        const adminData = { email: normalizedEmail, id: 'superadmin_1', name: 'Super Admin' };
         await StorageService.saveUserSession({ userData: adminData, type: 'superadmin' });
         setUser(adminData);
         setUserType('superadmin');
         return true;
       }
 
-      const allUsers = await StorageService.getUsers() || [];
-      const existingUser = allUsers.find(u => u.email === email);
+      const allUsers = (await StorageService.getUsers()) || [];
+      const existingUser = allUsers.find((u) => u.email === normalizedEmail);
 
       let userData;
       if (existingUser) {
-        userData = { email, id: existingUser.id, name: existingUser.name || '', phone: existingUser.phone || '' };
         if (existingUser.type !== type) {
-          const updated = allUsers.map(u => u.email === email ? { ...u, type } : u);
-          await StorageService.saveUsers(updated);
+          return false;
         }
+        userData = {
+          email: normalizedEmail,
+          id: existingUser.id,
+          name: existingUser.name || '',
+          phone: existingUser.phone || '',
+        };
       } else {
-        userData = { email, id: Date.now().toString() };
+        userData = { email: normalizedEmail, id: generateId('user') };
         allUsers.push({ ...userData, type, status: 'active', joinedAt: new Date().toISOString() });
         await StorageService.saveUsers(allUsers);
       }
@@ -86,7 +97,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, userType]);
 
-  // Context value is stable unless user state or loading state changes
   const contextValue = useMemo(() => ({
     user,
     userType,

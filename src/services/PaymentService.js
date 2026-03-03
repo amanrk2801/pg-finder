@@ -1,29 +1,26 @@
-/**
- * PaymentService
- *
- * Provides a Razorpay-compatible payment interface.
- * Currently uses simulated checkout since Expo Go doesn't support native Razorpay SDK.
- *
- * To enable real Razorpay:
- * 1. Run: npx expo install react-native-razorpay
- * 2. Switch to expo-dev-client (npx expo run:android / npx expo run:ios)
- * 3. Set USE_REAL_RAZORPAY = true below
- * 4. Replace RAZORPAY_KEY with your live/test key from https://dashboard.razorpay.com
- */
+import { generateId } from '../utils/id';
 
-const USE_REAL_RAZORPAY = false;
-const RAZORPAY_KEY = 'rzp_test_XXXXXXXXXXXXXX';
+const USE_REAL_RAZORPAY = process.env.EXPO_PUBLIC_USE_REAL_RAZORPAY === 'true';
+const RAZORPAY_KEY = process.env.EXPO_PUBLIC_RAZORPAY_KEY || '';
+const ORDERS_API_BASE_URL = process.env.EXPO_PUBLIC_PAYMENTS_API_BASE_URL || '';
 
 function generateOrderId() {
-    return 'order_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    return generateId('order');
 }
 
 function generateTransactionId() {
-    return 'pay_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+    return generateId('pay');
+}
+
+function validateAmount(amount) {
+    return Number.isFinite(amount) && amount > 0;
 }
 
 async function openRealRazorpay(options) {
     try {
+        if (!RAZORPAY_KEY || !ORDERS_API_BASE_URL) {
+            return { success: false, error: 'Missing payment configuration for real gateway mode.' };
+        }
         const RazorpayCheckout = require('react-native-razorpay').default;
         const result = await RazorpayCheckout.open(options);
         return { success: true, data: result };
@@ -40,7 +37,7 @@ async function openSimulatedCheckout(options) {
                 data: {
                     razorpay_payment_id: generateTransactionId(),
                     razorpay_order_id: options.order_id || generateOrderId(),
-                    razorpay_signature: 'simulated_signature_' + Date.now(),
+                    razorpay_signature: `simulated_signature_${generateId('sig')}`,
                 },
             });
         }, 2000);
@@ -48,27 +45,37 @@ async function openSimulatedCheckout(options) {
 }
 
 const PaymentService = {
-    /**
-     * Create a Razorpay order (normally done on backend).
-     * In production, replace this with an API call to your server.
-     */
     async createOrder({ amount, currency = 'INR', receipt }) {
+        if (!validateAmount(amount)) {
+            throw new Error('Invalid payment amount.');
+        }
+
+        if (USE_REAL_RAZORPAY) {
+            return {
+                id: generateOrderId(),
+                amount: Math.round(amount * 100),
+                currency,
+                receipt: receipt || generateId('rcpt'),
+                source: 'backend_required',
+            };
+        }
+
         return {
             id: generateOrderId(),
-            amount: amount * 100, // Razorpay uses paise
+            amount: Math.round(amount * 100),
             currency,
-            receipt: receipt || `rcpt_${Date.now()}`,
+            receipt: receipt || generateId('rcpt'),
         };
     },
 
-    /**
-     * Open checkout and process payment.
-     * Returns { success, data?, error? }
-     */
     async processPayment({ amount, pgName, userName, userEmail, userPhone, orderId, description }) {
+        if (!validateAmount(amount)) {
+            return { success: false, error: 'Invalid payment amount.' };
+        }
+
         const options = {
             key: RAZORPAY_KEY,
-            amount: amount * 100,
+            amount: Math.round(amount * 100),
             currency: 'INR',
             name: pgName || 'PG Rent',
             description: description || 'Monthly Rent Payment',

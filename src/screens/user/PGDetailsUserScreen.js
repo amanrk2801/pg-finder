@@ -31,7 +31,7 @@ const { width } = Dimensions.get("window");
 export default function PGDetailsUserScreen({ route, navigation }) {
   const { pg } = route.params;
   const { user } = useAuth();
-  const { favorites, toggleFavorite, addBooking, updatePg, reviews, addReview } = useData();
+  const { getFavoritesForUser, toggleFavorite, addBooking, updatePg, reviews, addReview } = useData();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Local state for optimistic update of vacancy
@@ -43,7 +43,7 @@ export default function PGDetailsUserScreen({ route, navigation }) {
   const [newReviewRating, setNewReviewRating] = useState(5);
 
   const pgReviews = reviews.filter(r => r.pgId === pg.id);
-  const isFavorite = favorites.includes(pg.id);
+  const isFavorite = getFavoritesForUser(user?.id).includes(pg.id);
 
   const handleCall = () => {
     Alert.alert("Contact Owner", `Opening dialer for ${pg.name}...`);

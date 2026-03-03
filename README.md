@@ -137,6 +137,19 @@ If you're upgrading from an older version, clear AsyncStorage to avoid stale dat
 
 ## App Roles & Flows
 
+### Environment Variables
+
+Create a `.env` file (or configure Expo env vars) for privileged flows:
+
+```bash
+EXPO_PUBLIC_SUPER_ADMIN_EMAIL=superadmin@pg.com
+EXPO_PUBLIC_SUPER_ADMIN_PASSWORD=strong-password
+EXPO_PUBLIC_USE_REAL_RAZORPAY=false
+EXPO_PUBLIC_RAZORPAY_KEY=rzp_test_xxx
+EXPO_PUBLIC_PAYMENTS_API_BASE_URL=https://your-api.example.com
+```
+
+
 ### User Flow
 ```
 Login (as User) → Browse PGs → View Details → Book Bed → Pay →
@@ -151,7 +164,7 @@ Admin Dashboard → Add/Edit PGs → Manage Mess Menu
 
 ### Super Admin Flow
 ```
-Login (superadmin@pg.com / admin123) → Approve Pending Admins →
+Login (configured via EXPO_PUBLIC_SUPER_ADMIN_EMAIL / EXPO_PUBLIC_SUPER_ADMIN_PASSWORD) → Approve Pending Admins →
 Manage Users → Resolve Disputes → Platform Settings
 ```
 
@@ -161,11 +174,11 @@ Manage Users → Resolve Disputes → Platform Settings
 
 | Role | Email | Password |
 |------|-------|----------|
-| Super Admin | `superadmin@pg.com` | `admin123` |
+| Super Admin | Set via `EXPO_PUBLIC_SUPER_ADMIN_EMAIL` | Set via `EXPO_PUBLIC_SUPER_ADMIN_PASSWORD` |
 | Admin | Any email (e.g. `admin@test.com`) | Any password |
 | User | Any email (e.g. `user@test.com`) | Any password |
 
-> **Note:** There is no real authentication. Any email/password combination works. The app generates a persistent user ID per email address.
+> **Note:** Super admin login is disabled unless the two env vars above are configured. Admin and user accounts are still local/demo-only and are role-locked per email.
 
 ---
 

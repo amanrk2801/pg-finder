@@ -22,7 +22,7 @@ const FILTERS = [
 
 export default function UserDashboard({ navigation }) {
     const { user, logout } = useAuth();
-    const { pgs, favorites, toggleFavorite } = useData();
+    const { pgs, getFavoritesForUser, toggleFavorite } = useData();
     const [searchQuery, setSearchQuery] = useState('');
     const [filteredPgs, setFilteredPgs] = useState(pgs);
     const [selectedFilter, setSelectedFilter] = useState('all');
@@ -121,7 +121,7 @@ export default function UserDashboard({ navigation }) {
                                 key={pg.id}
                                 pg={pg}
                                 onPress={() => navigation.navigate(ROUTES.USER.PG_DETAILS, { pg })}
-                                isFavorite={favorites.includes(pg.id)}
+                                isFavorite={getFavoritesForUser(user?.id).includes(pg.id)}
                                 onToggleFavorite={() => toggleFavorite(user?.id, pg.id)}
                             />
                         ))

@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth, useData } from '../hooks';
 import { ROUTES } from '../navigation/routes';
 import StorageService from '../services/StorageService';
+import { AUTH_CONFIG } from '../constants/auth';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPOGRAPHY } from '../constants/theme';
 import { CustomInput, CustomButton } from '../components/common';
 
@@ -30,40 +31,76 @@ export default function LoginScreen({ navigation }) {
     const scrollViewRef = useRef(null);
     const passwordInputRef = useRef(null);
 
+    const isValidEmail = (value) => /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
+    const isValidPhone = (value) => /^[0-9]{10}$/.test(value.replace(/\D/g, ''));
+
     const handleLogin = useCallback(async () => {
-        if (!email || !password) {
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (!normalizedEmail || !password) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
+
+        if (!isValidEmail(normalizedEmail)) {
+            Alert.alert('Error', 'Please enter a valid email address.');
+            return;
+        }
+
         Keyboard.dismiss();
 
-        if (selectedType === 'admin' && email === 'superadmin@pg.com' && password === 'admin123') {
-            const success = await login(email, password, 'superadmin');
+        const isConfiguredSuperAdmin = AUTH_CONFIG.isSuperAdminEnabled
+            && normalizedEmail === AUTH_CONFIG.superAdminEmail?.toLowerCase()
+            && password === AUTH_CONFIG.superAdminPassword;
+
+        if (selectedType === 'admin' && isConfiguredSuperAdmin) {
+            const success = await login(normalizedEmail, password, 'superadmin');
             if (success) navigation.replace(ROUTES.SUPER_ADMIN.DASHBOARD);
             return;
         }
 
         if (selectedType === 'admin') {
-            const success = await login(email, password, 'admin');
-            if (!success) return;
+            const existingUsers = await StorageService.getUsers() || [];
+            const existingUser = existingUsers.find((item) => item.email === normalizedEmail);
+            if (existingUser && existingUser.type !== 'admin') {
+                Alert.alert('Access denied', 'This email is already registered as a user account.');
+                return;
+            }
+
+            const success = await login(normalizedEmail, password, 'admin');
+            if (!success) {
+                Alert.alert('Login failed', 'Unable to sign in as admin with this account.');
+                return;
+            }
 
             const session = await StorageService.getUserSession();
             const userId = session?.userData?.id;
 
-            const existingPg = pgs.find(p => p.adminId === userId);
-            const existingPending = pendingPgs.find(p => p.adminId === userId);
+            const existingPg = pgs.find((p) => p.adminId === userId);
+            const existingPending = pendingPgs.find((p) => p.adminId === userId);
 
             if (existingPg) {
                 navigation.replace(ROUTES.ADMIN.DASHBOARD);
             } else if (existingPending) {
                 navigation.replace(ROUTES.ADMIN.PENDING_APPROVAL);
             } else {
-                setAuthData({ email, password, userId });
+                setAuthData({ email: normalizedEmail, userId });
                 setShowPgForm(true);
             }
         } else {
-            const success = await login(email, password, 'user');
-            if (success) navigation.replace(ROUTES.USER.TABS);
+            const existingUsers = await StorageService.getUsers() || [];
+            const existingUser = existingUsers.find((item) => item.email === normalizedEmail);
+            if (existingUser && existingUser.type !== 'user') {
+                Alert.alert('Access denied', 'This email is already registered as an admin account.');
+                return;
+            }
+
+            const success = await login(normalizedEmail, password, 'user');
+            if (success) {
+                navigation.replace(ROUTES.USER.TABS);
+            } else {
+                Alert.alert('Login failed', 'Unable to sign in as user with this account.');
+            }
         }
     }, [email, password, selectedType, login, navigation, pgs, pendingPgs]);
 
@@ -73,8 +110,22 @@ export default function LoginScreen({ navigation }) {
             return;
         }
 
+        const parsedRent = Number(rent);
+        if (Number.isNaN(parsedRent) || parsedRent <= 0) {
+            Alert.alert('Error', 'Please enter a valid monthly rent amount.');
+            return;
+        }
+
+        if (!isValidPhone(phone)) {
+            Alert.alert('Error', 'Please enter a valid 10-digit phone number.');
+            return;
+        }
+
         const success = await addPendingPg({
-            businessName, address, rent, phone,
+            businessName: businessName.trim(),
+            address: address.trim(),
+            rent: parsedRent,
+            phone: phone.trim(),
             adminId: authData.userId,
         });
 

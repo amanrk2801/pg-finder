@@ -8,10 +8,11 @@ import PGCard from '../../components/cards/PGCard';
 import { EmptyState, ScreenHeader } from '../../components/common';
 
 export default function FavoritesScreen({ navigation }) {
-    const { pgs, favorites, toggleFavorite } = useData();
+    const { pgs, getFavoritesForUser, toggleFavorite } = useData();
     const { user } = useAuth();
 
-    const favoritePgs = pgs.filter(pg => favorites.includes(pg.id));
+    const userFavorites = getFavoritesForUser(user?.id);
+    const favoritePgs = pgs.filter(pg => userFavorites.includes(pg.id));
 
     return (
         <SafeAreaView style={styles.safeArea}>

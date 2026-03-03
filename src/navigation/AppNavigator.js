@@ -25,11 +25,33 @@ import PGDetailsUserScreen from '../screens/user/PGDetailsUserScreen';
 
 const Stack = createStackNavigator();
 
-const INITIAL_ROUTE_BY_TYPE = {
-    superadmin: ROUTES.SUPER_ADMIN.DASHBOARD,
-    admin: ROUTES.ADMIN.DASHBOARD,
-    pending_admin: ROUTES.ADMIN.PENDING_APPROVAL,
-};
+function AdminStack() {
+    return (
+        <>
+            <Stack.Screen name={ROUTES.ADMIN.DASHBOARD} component={AdminDashboard} />
+            <Stack.Screen name={ROUTES.ADMIN.PENDING_APPROVAL} component={PendingApprovalScreen} />
+            <Stack.Screen name={ROUTES.ADMIN.ADD_PG} component={AddPGScreen} />
+            <Stack.Screen name={ROUTES.ADMIN.EDIT_PG} component={EditPGScreen} />
+            <Stack.Screen name={ROUTES.ADMIN.PG_DETAILS} component={PGDetailsScreen} />
+            <Stack.Screen name={ROUTES.ADMIN.PROFILE} component={ProfileScreen} />
+            <Stack.Screen name={ROUTES.ADMIN.MANAGE_MENU} component={ManageMenuScreen} />
+        </>
+    );
+}
+
+function UserStack() {
+    return (
+        <>
+            <Stack.Screen name={ROUTES.USER.TABS} component={UserTabNavigator} />
+            <Stack.Screen name={ROUTES.USER.PG_DETAILS} component={PGDetailsUserScreen} />
+            <Stack.Screen name={ROUTES.USER.FAVORITES} component={FavoritesScreen} />
+            <Stack.Screen name={ROUTES.USER.CREATE_POST} component={CreatePostScreen} />
+            <Stack.Screen name={ROUTES.USER.PAYMENT} component={PaymentScreen} />
+            <Stack.Screen name={ROUTES.USER.PAYMENT_HISTORY} component={PaymentHistoryScreen} />
+            <Stack.Screen name={ROUTES.USER.WEEKLY_MENU} component={WeeklyMenuScreen} />
+        </>
+    );
+}
 
 export default function AppNavigator() {
     const { user, userType, isLoading } = useAuth();
@@ -43,38 +65,24 @@ export default function AppNavigator() {
         );
     }
 
-    const initialRoute = user
-        ? (INITIAL_ROUTE_BY_TYPE[userType] || ROUTES.USER.TABS)
-        : ROUTES.LOGIN;
+    const hasKnownRole = ['user', 'admin', 'pending_admin', 'superadmin'].includes(userType);
 
     return (
         <NavigationContainer>
-            <Stack.Navigator
-                initialRouteName={initialRoute}
-                screenOptions={{ headerShown: false, cardStyle: { backgroundColor: COLORS.white } }}
-            >
-                <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
+            <Stack.Navigator screenOptions={{ headerShown: false, cardStyle: { backgroundColor: COLORS.white } }}>
+                {(!user || !hasKnownRole) && <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />}
 
-                {/* Admin Screens */}
-                <Stack.Screen name={ROUTES.ADMIN.DASHBOARD} component={AdminDashboard} />
-                <Stack.Screen name={ROUTES.ADMIN.PENDING_APPROVAL} component={PendingApprovalScreen} />
-                <Stack.Screen name={ROUTES.ADMIN.ADD_PG} component={AddPGScreen} />
-                <Stack.Screen name={ROUTES.ADMIN.EDIT_PG} component={EditPGScreen} />
-                <Stack.Screen name={ROUTES.ADMIN.PG_DETAILS} component={PGDetailsScreen} />
-                <Stack.Screen name={ROUTES.ADMIN.PROFILE} component={ProfileScreen} />
-                <Stack.Screen name={ROUTES.ADMIN.MANAGE_MENU} component={ManageMenuScreen} />
+                {userType === 'superadmin' && (
+                    <Stack.Screen name={ROUTES.SUPER_ADMIN.DASHBOARD} component={SuperAdminDashboard} />
+                )}
 
-                {/* Super Admin */}
-                <Stack.Screen name={ROUTES.SUPER_ADMIN.DASHBOARD} component={SuperAdminDashboard} />
+                {userType === 'admin' && <AdminStack />}
 
-                {/* User Screens */}
-                <Stack.Screen name={ROUTES.USER.TABS} component={UserTabNavigator} />
-                <Stack.Screen name={ROUTES.USER.PG_DETAILS} component={PGDetailsUserScreen} />
-                <Stack.Screen name={ROUTES.USER.FAVORITES} component={FavoritesScreen} />
-                <Stack.Screen name={ROUTES.USER.CREATE_POST} component={CreatePostScreen} />
-                <Stack.Screen name={ROUTES.USER.PAYMENT} component={PaymentScreen} />
-                <Stack.Screen name={ROUTES.USER.PAYMENT_HISTORY} component={PaymentHistoryScreen} />
-                <Stack.Screen name={ROUTES.USER.WEEKLY_MENU} component={WeeklyMenuScreen} />
+                {userType === 'pending_admin' && (
+                    <Stack.Screen name={ROUTES.ADMIN.PENDING_APPROVAL} component={PendingApprovalScreen} />
+                )}
+
+                {userType === 'user' && <UserStack />}
             </Stack.Navigator>
         </NavigationContainer>
     );
