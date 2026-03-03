@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar,
-    Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,13 +12,8 @@ import PGCard from '../../components/cards/PGCard';
 import { EmptyState, ScreenHeader } from '../../components/common';
 
 export default function MyBookingsScreen({ navigation }) {
-    const { pgs, bookings, clearBookings, addDispute } = useData();
+    const { pgs, bookings, clearBookings } = useData();
     const { user } = useAuth();
-
-    const [showDisputeModal, setShowDisputeModal] = useState(false);
-    const [selectedPgId, setSelectedPgId] = useState(null);
-    const [disputeTitle, setDisputeTitle] = useState('');
-    const [disputeDesc, setDisputeDesc] = useState('');
 
     const userBookings = bookings.filter(b => b.userId === user?.id);
 
@@ -32,27 +27,6 @@ export default function MyBookingsScreen({ navigation }) {
     const formatDate = (dateString) => {
         const options = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
         return new Date(dateString).toLocaleDateString(undefined, options);
-    };
-
-    const openDisputeModal = (pgId) => {
-        setSelectedPgId(pgId);
-        setDisputeTitle('');
-        setDisputeDesc('');
-        setShowDisputeModal(true);
-    };
-
-    const handleSubmitDispute = async () => {
-        if (!disputeTitle.trim() || !disputeDesc.trim()) {
-            Alert.alert('Error', 'Please fill in both title and description.');
-            return;
-        }
-        const success = await addDispute(user.id, selectedPgId, disputeTitle, disputeDesc);
-        if (success) {
-            setShowDisputeModal(false);
-            Alert.alert('Ticket Raised', 'Our Super Admin team will review your issue shortly.');
-        } else {
-            Alert.alert('Error', 'Could not raise ticket. Try again.');
-        }
     };
 
     const clearButton = userBookings.length > 0 ? (
@@ -97,7 +71,7 @@ export default function MyBookingsScreen({ navigation }) {
                                 />
                                 <TouchableOpacity
                                     style={styles.disputeButton}
-                                    onPress={() => openDisputeModal(pg.id)}
+                                    onPress={() => navigation.navigate(ROUTES.USER.RAISE_ISSUE, { pgId: pg.id, bookingId: booking.id })}
                                 >
                                     <Ionicons name="warning-outline" size={16} color={COLORS.error} />
                                     <Text style={styles.disputeText}>Raise Issue / Dispute</Text>
@@ -109,44 +83,6 @@ export default function MyBookingsScreen({ navigation }) {
                 <View style={{ height: 40 }} />
             </ScrollView>
 
-            <Modal visible={showDisputeModal} animationType="slide" transparent>
-                <KeyboardAvoidingView
-                    style={styles.modalOverlay}
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                >
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeaderRow}>
-                            <Text style={styles.modalTitle}>Raise a Ticket</Text>
-                            <TouchableOpacity onPress={() => setShowDisputeModal(false)}>
-                                <Ionicons name="close" size={24} color={COLORS.black} />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.modalSub}>
-                            Describe the issue you faced during your stay or booking process.
-                        </Text>
-                        <Text style={styles.inputLabel}>Issue Title</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            placeholder="e.g., Refund not received, Cleanliness issue"
-                            value={disputeTitle}
-                            onChangeText={setDisputeTitle}
-                        />
-                        <Text style={styles.inputLabel}>Detailed Description</Text>
-                        <TextInput
-                            style={[styles.textInput, styles.textArea]}
-                            placeholder="Please explain in detail..."
-                            value={disputeDesc}
-                            onChangeText={setDisputeDesc}
-                            multiline
-                            numberOfLines={4}
-                            textAlignVertical="top"
-                        />
-                        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmitDispute}>
-                            <Text style={styles.submitBtnText}>Submit Ticket</Text>
-                        </TouchableOpacity>
-                    </View>
-                </KeyboardAvoidingView>
-            </Modal>
         </SafeAreaView>
     );
 }
@@ -179,25 +115,4 @@ const styles = StyleSheet.create({
         paddingVertical: 10, borderRadius: BORDER_RADIUS.md, marginTop: 4, marginBottom: SPACING.lg,
     },
     disputeText: { color: COLORS.error, fontWeight: FONT_WEIGHTS.bold, fontSize: FONT_SIZES.sm, marginLeft: 6 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-    modalContent: {
-        backgroundColor: COLORS.white, borderTopLeftRadius: BORDER_RADIUS.xl,
-        borderTopRightRadius: BORDER_RADIUS.xl, padding: SPACING.xl,
-        paddingBottom: Platform.OS === 'ios' ? 40 : SPACING.xxl,
-    },
-    modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    modalTitle: { ...TYPOGRAPHY.h2, color: COLORS.black },
-    modalSub: { fontSize: FONT_SIZES.sm, color: COLORS.gray, marginBottom: SPACING.lg },
-    inputLabel: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black, marginBottom: 6 },
-    textInput: {
-        backgroundColor: COLORS.backgroundGray, borderRadius: BORDER_RADIUS.md,
-        padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.black,
-        marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.borderLight,
-    },
-    textArea: { height: 100 },
-    submitBtn: {
-        backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.lg,
-        padding: SPACING.md, alignItems: 'center', marginTop: SPACING.sm,
-    },
-    submitBtnText: { color: COLORS.white, fontWeight: FONT_WEIGHTS.bold, fontSize: FONT_SIZES.md },
 });

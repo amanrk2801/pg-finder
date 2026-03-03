@@ -55,7 +55,6 @@ export default function UserDashboard({ navigation }) {
 
     const handleLogout = () => {
         logout();
-        navigation.replace(ROUTES.LOGIN);
     };
 
     return (

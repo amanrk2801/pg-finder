@@ -13,6 +13,7 @@ import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPO
 import { CustomInput, CustomButton } from '../components/common';
 
 const { height } = Dimensions.get('window');
+const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
@@ -59,6 +60,14 @@ export default function LoginScreen({ navigation }) {
             return;
         }
 
+        if (USE_BACKEND) {
+            const success = await login(normalizedEmail, password, selectedType);
+            if (!success) {
+                Alert.alert('Login failed', 'Invalid credentials or role.');
+            }
+            return;
+        }
+
         if (selectedType === 'admin') {
             const existingUsers = await StorageService.getUsers() || [];
             const existingUser = existingUsers.find((item) => item.email === normalizedEmail);
@@ -79,11 +88,7 @@ export default function LoginScreen({ navigation }) {
             const existingPg = pgs.find((p) => p.adminId === userId);
             const existingPending = pendingPgs.find((p) => p.adminId === userId);
 
-            if (existingPg) {
-                navigation.replace(ROUTES.ADMIN.DASHBOARD);
-            } else if (existingPending) {
-                navigation.replace(ROUTES.ADMIN.PENDING_APPROVAL);
-            } else {
+            if (!existingPg && !existingPending) {
                 setAuthData({ email: normalizedEmail, userId });
                 setShowPgForm(true);
             }
@@ -96,9 +101,7 @@ export default function LoginScreen({ navigation }) {
             }
 
             const success = await login(normalizedEmail, password, 'user');
-            if (success) {
-                navigation.replace(ROUTES.USER.TABS);
-            } else {
+            if (!success) {
                 Alert.alert('Login failed', 'Unable to sign in as user with this account.');
             }
         }
@@ -131,7 +134,6 @@ export default function LoginScreen({ navigation }) {
 
         if (success) {
             setShowPgForm(false);
-            navigation.replace(ROUTES.ADMIN.PENDING_APPROVAL);
         }
     };
 
@@ -204,8 +206,16 @@ export default function LoginScreen({ navigation }) {
                     <CustomButton
                         title={selectedType === 'admin' ? 'Continue as Admin' : 'Sign In'}
                         onPress={handleLogin}
-                        style={{ marginTop: 6, marginBottom: SPACING.lg }}
+                        style={{ marginTop: 6, marginBottom: SPACING.md }}
                     />
+                    <TouchableOpacity
+                        style={styles.switchAuthRow}
+                        onPress={() => navigation.navigate(ROUTES.REGISTER)}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.switchAuthText}>New here?</Text>
+                        <Text style={styles.switchAuthLink}> Create an account</Text>
+                    </TouchableOpacity>
                     <Text style={styles.footerText}>
                         By continuing, you agree to our Terms & Privacy Policy
                     </Text>
@@ -283,6 +293,21 @@ const styles = StyleSheet.create({
     typeText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.bold, color: COLORS.gray },
     typeTextActive: { color: COLORS.primary },
     footerText: { fontSize: 12, color: COLORS.textLight, textAlign: 'center', lineHeight: 18, paddingHorizontal: SPACING.xl },
+    switchAuthRow: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: SPACING.sm,
+    },
+    switchAuthText: {
+        fontSize: FONT_SIZES.sm,
+        color: COLORS.gray,
+    },
+    switchAuthLink: {
+        fontSize: FONT_SIZES.sm,
+        color: COLORS.primary,
+        fontWeight: FONT_WEIGHTS.bold,
+    },
     keyboardSpacer: { height: 60 },
     modalContainer: { flex: 1, backgroundColor: COLORS.white },
     modalScroll: { padding: SPACING.xl, paddingBottom: 40 },

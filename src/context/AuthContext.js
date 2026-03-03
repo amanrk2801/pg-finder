@@ -1,9 +1,12 @@
 import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
 import StorageService from '../services/StorageService';
 import { AUTH_CONFIG } from '../constants/auth';
+import ApiClient from '../services/ApiClient';
 import { generateId } from '../utils/id';
 
 export const AuthContext = createContext();
+
+const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -32,6 +35,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
+      // Superadmin stays env-based, same as before
       if (
         type === 'superadmin' &&
         AUTH_CONFIG.isSuperAdminEnabled &&
@@ -45,6 +49,21 @@ export const AuthProvider = ({ children }) => {
         return true;
       }
 
+      if (USE_BACKEND) {
+        const response = await ApiClient.post('/auth/login', { email: normalizedEmail, password, type });
+        const { token, user: apiUser } = response;
+        const session = {
+          userData: apiUser,
+          type: apiUser.type,
+          token,
+        };
+        await StorageService.saveUserSession(session);
+        setUser(apiUser);
+        setUserType(apiUser.type);
+        return true;
+      }
+
+      // Legacy local-only mode (no backend)
       const allUsers = (await StorageService.getUsers()) || [];
       const existingUser = allUsers.find((u) => u.email === normalizedEmail);
 

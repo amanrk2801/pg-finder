@@ -43,7 +43,7 @@ export default function ProfileScreen({ navigation }) {
             { text: 'Cancel', style: 'cancel' },
             {
                 text: 'Logout',
-                onPress: () => { logout(); navigation.replace(ROUTES.LOGIN); },
+                onPress: () => { logout(); },
                 style: 'destructive',
             },
         ]);

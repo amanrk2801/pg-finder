@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +26,14 @@ function getRentStatus(nextDueDate) {
 
 export default function MyPGScreen({ navigation }) {
     const { user } = useAuth();
-    const { bookings, pgs, payments, getMessMenuForPg } = useData();
+    const {
+        bookings,
+        pgs,
+        payments,
+        getMessMenuForPg,
+        addLeaveRequest,
+        leaveRequests,
+    } = useData();
 
     const [activeBooking, setActiveBooking] = useState(null);
     const [pg, setPg] = useState(null);
@@ -82,6 +89,48 @@ export default function MyPGScreen({ navigation }) {
     const thisMonthPaid = userPayments.some(
         p => p.status === 'paid' && new Date(p.date).getMonth() === now.getMonth() && new Date(p.date).getFullYear() === now.getFullYear(),
     );
+
+    const activeLeaveRequest = leaveRequests?.find(
+        (r) => r.bookingId === activeBooking?.id,
+    );
+
+    const handleLeavePg = () => {
+        const existingPending = leaveRequests?.find(
+            (r) => r.bookingId === activeBooking.id && r.status === 'pending',
+        );
+        if (existingPending) {
+            Alert.alert('Leave Request Pending', 'Your request to leave this PG is already pending with the admin.');
+            return;
+        }
+
+        Alert.alert(
+            'Leave PG',
+            'Are you sure you want to request to leave this PG? Your admin will need to approve this before your booking is closed.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Leave',
+                    style: 'destructive',
+                    onPress: async () => {
+                        if (!activeBooking) return;
+                        const success = await addLeaveRequest({
+                            userId: user.id,
+                            pgId: pg.id,
+                            bookingId: activeBooking.id,
+                        });
+                        if (success) {
+                            Alert.alert(
+                                'Request Sent',
+                                'Your leave request has been sent to the admin for approval.',
+                            );
+                        } else {
+                            Alert.alert('Error', 'Could not create leave request. Please try again.');
+                        }
+                    },
+                },
+            ],
+        );
+    };
 
     if (!activeBooking || !pg) {
         return (
@@ -144,6 +193,22 @@ export default function MyPGScreen({ navigation }) {
                             <Ionicons name="card-outline" size={18} color={COLORS.white} />
                             <Text style={styles.payButtonText}>Pay Rent</Text>
                         </TouchableOpacity>
+                    )}
+
+                    {activeLeaveRequest && (
+                        <View style={styles.leaveStatusRow}>
+                            <Text
+                                style={[
+                                    styles.leaveStatusText,
+                                    activeLeaveRequest.status === 'approved' && styles.leaveApprovedText,
+                                    activeLeaveRequest.status === 'rejected' && styles.leaveRejectedText,
+                                ]}
+                            >
+                                {activeLeaveRequest.status === 'pending' && 'Leave request pending approval'}
+                                {activeLeaveRequest.status === 'approved' && 'Leave request approved'}
+                                {activeLeaveRequest.status === 'rejected' && 'Leave request rejected'}
+                            </Text>
+                        </View>
                     )}
                 </View>
 
@@ -227,12 +292,23 @@ export default function MyPGScreen({ navigation }) {
                     <TouchableOpacity
                         style={styles.actionCard}
                         activeOpacity={0.8}
-                        onPress={() => navigation.navigate(ROUTES.USER.COMMUNITY)}
+                        onPress={() => navigation.navigate(ROUTES.USER.RAISE_ISSUE, { pgId: pg.id, bookingId: activeBooking.id })}
                     >
                         <View style={[styles.actionIcon, { backgroundColor: COLORS.backgroundPink }]}>
                             <Ionicons name="chatbubble-ellipses-outline" size={24} color={COLORS.primary} />
                         </View>
                         <Text style={styles.actionLabel}>Raise{'\n'}Issue</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        activeOpacity={0.8}
+                        onPress={handleLeavePg}
+                    >
+                        <View style={[styles.actionIcon, { backgroundColor: '#FFEBEE' }]}>
+                            <Ionicons name="log-out-outline" size={24} color="#D32F2F" />
+                        </View>
+                        <Text style={styles.actionLabel}>Leave{'\n'}PG</Text>
                     </TouchableOpacity>
                 </View>
 
@@ -290,6 +366,21 @@ const styles = StyleSheet.create({
         marginTop: SPACING.lg, ...SHADOWS.primary,
     },
     payButtonText: { color: COLORS.white, fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.bold },
+    leaveStatusRow: {
+        marginTop: SPACING.sm,
+    },
+    leaveStatusText: {
+        fontSize: FONT_SIZES.xs,
+        color: COLORS.gray,
+    },
+    leaveApprovedText: {
+        color: '#2E7D32',
+        fontWeight: FONT_WEIGHTS.bold,
+    },
+    leaveRejectedText: {
+        color: '#D32F2F',
+        fontWeight: FONT_WEIGHTS.bold,
+    },
 
     messCard: {
         backgroundColor: COLORS.white, marginHorizontal: SPACING.lg, borderRadius: BORDER_RADIUS.xl,

@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
     SETTINGS: 'settings',
     PAYMENTS: 'payments',
     MESS_MENUS: 'messMenus',
+    LEAVE_REQUESTS: 'leaveRequests',
 };
 
 const STORAGE_SCHEMA_VERSION = 2;
@@ -107,6 +108,9 @@ class StorageService {
 
     async getMessMenus() { return this.getItem(STORAGE_KEYS.MESS_MENUS); }
     async saveMessMenus(menus) { return this.setItem(STORAGE_KEYS.MESS_MENUS, menus); }
+
+    async getLeaveRequests() { return this.getItem(STORAGE_KEYS.LEAVE_REQUESTS); }
+    async saveLeaveRequests(requests) { return this.setItem(STORAGE_KEYS.LEAVE_REQUESTS, requests); }
 }
 
 export default new StorageService();

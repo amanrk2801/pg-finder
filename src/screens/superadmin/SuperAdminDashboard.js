@@ -36,7 +36,6 @@ export default function SuperAdminDashboard({ navigation }) {
                     text: "Logout",
                     onPress: () => {
                         logout();
-                        navigation.replace(ROUTES.LOGIN);
                     },
                     style: "destructive"
                 }

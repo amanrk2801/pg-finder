@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useData } from '../../hooks';
+import { useAuth, useData } from '../../hooks';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { ScreenHeader } from '../../components/common';
 
@@ -20,19 +20,30 @@ function buildEmptyWeek() {
 }
 
 export default function ManageMenuScreen({ route, navigation }) {
-    const { pgId } = route.params;
-    const { getMessMenuForPg, updateMessMenu } = useData();
+    const { pgId: initialPgId } = route.params || {};
+    const { user } = useAuth();
+    const { pgs, getMessMenuForPg, updateMessMenu } = useData();
 
-    const existing = getMessMenuForPg(pgId);
+    const myPgs = (pgs || []).filter((pg) => pg.adminId === user?.id);
 
-    const [weeklyMenu, setWeeklyMenu] = useState(existing?.weeklyMenu || buildEmptyWeek());
-    const [todaysSpecial, setTodaysSpecial] = useState(existing?.todaysSpecial || '');
-    const [mealPlanPrice, setMealPlanPrice] = useState(String(existing?.mealPlanPrice || ''));
-    const [isVegOnly, setIsVegOnly] = useState(existing?.isVegOnly ?? true);
+    const [selectedPgId, setSelectedPgId] = useState(initialPgId || myPgs[0]?.id || null);
+    const [weeklyMenu, setWeeklyMenu] = useState(buildEmptyWeek());
+    const [todaysSpecial, setTodaysSpecial] = useState('');
+    const [mealPlanPrice, setMealPlanPrice] = useState('');
+    const [isVegOnly, setIsVegOnly] = useState(true);
     const [selectedDay, setSelectedDay] = useState(0);
     const [saving, setSaving] = useState(false);
 
     const dayName = DAYS_ORDER[selectedDay];
+
+    useEffect(() => {
+        if (!selectedPgId) return;
+        const existing = getMessMenuForPg(selectedPgId);
+        setWeeklyMenu(existing?.weeklyMenu || buildEmptyWeek());
+        setTodaysSpecial(existing?.todaysSpecial || '');
+        setMealPlanPrice(String(existing?.mealPlanPrice || ''));
+        setIsVegOnly(existing?.isVegOnly ?? true);
+    }, [selectedPgId, getMessMenuForPg]);
 
     const updateMeal = (meal, value) => {
         setWeeklyMenu(prev => ({
@@ -42,8 +53,13 @@ export default function ManageMenuScreen({ route, navigation }) {
     };
 
     const handleSave = async () => {
+        if (!selectedPgId) {
+            Alert.alert('Select PG', 'Please select a PG first to manage its mess menu.');
+            return;
+        }
+
         setSaving(true);
-        const success = await updateMessMenu(pgId, {
+        const success = await updateMessMenu(selectedPgId, {
             weeklyMenu,
             todaysSpecial: todaysSpecial.trim(),
             mealPlanPrice: parseInt(mealPlanPrice) || 0,
@@ -66,6 +82,43 @@ export default function ManageMenuScreen({ route, navigation }) {
 
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+
+                    {/* PG Selector */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Select PG</Text>
+                        {myPgs.length === 0 ? (
+                            <Text style={styles.noPgText}>
+                                You do not have any PGs yet. Please add a property first.
+                            </Text>
+                        ) : (
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={styles.pgChipsRow}
+                            >
+                                {myPgs.map((pg) => {
+                                    const isActive = pg.id === selectedPgId;
+                                    return (
+                                        <TouchableOpacity
+                                            key={pg.id}
+                                            style={[styles.pgChip, isActive && styles.pgChipActive]}
+                                            onPress={() => setSelectedPgId(pg.id)}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.pgChipText,
+                                                    isActive && styles.pgChipTextActive,
+                                                ]}
+                                            >
+                                                {pg.name}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </ScrollView>
+                        )}
+                    </View>
 
                     {/* General Settings */}
                     <View style={styles.card}>
@@ -186,6 +239,31 @@ const styles = StyleSheet.create({
         padding: SPACING.xl, ...SHADOWS.small,
     },
     cardTitle: { fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black, marginBottom: SPACING.lg },
+    noPgText: {
+        fontSize: FONT_SIZES.sm,
+        color: COLORS.gray,
+    },
+    pgChipsRow: {
+        flexDirection: 'row',
+        gap: SPACING.sm,
+    },
+    pgChip: {
+        paddingHorizontal: SPACING.lg,
+        paddingVertical: SPACING.sm,
+        borderRadius: BORDER_RADIUS.lg,
+        backgroundColor: COLORS.backgroundGray,
+    },
+    pgChipActive: {
+        backgroundColor: COLORS.primary,
+    },
+    pgChipText: {
+        fontSize: FONT_SIZES.sm,
+        color: COLORS.gray,
+        fontWeight: FONT_WEIGHTS.medium,
+    },
+    pgChipTextActive: {
+        color: COLORS.white,
+    },
 
     label: {
         fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.gray,

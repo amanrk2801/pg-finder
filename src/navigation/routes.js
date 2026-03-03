@@ -4,10 +4,14 @@
 export const ROUTES = {
     // Auth Flows
     LOGIN: 'Login',
+    REGISTER: 'Register',
 
     // Admin Flows
     ADMIN: {
         DASHBOARD: 'AdminDashboard',
+        LEAVE_REQUESTS: 'AdminLeaveRequests',
+        LEAVES_HISTORY: 'AdminLeavesHistory',
+        BOOKINGS: 'AdminBookings',
         PENDING_APPROVAL: 'PendingApproval',
         ADD_PG: 'AddPG',
         EDIT_PG: 'EditPG',
@@ -29,6 +33,7 @@ export const ROUTES = {
         FAVORITES: 'Favorites',
         MY_PG: 'MyPG',
         MY_BOOKINGS: 'MyBookings',
+        RAISE_ISSUE: 'RaiseIssue',
         COMMUNITY: 'Community',
         CREATE_POST: 'CreatePost',
         PROFILE: 'UserProfile',

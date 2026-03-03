@@ -1,51 +1,13 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import StorageService from '../services/StorageService';
+import ApiClient from '../services/ApiClient';
 import { generateId } from '../utils/id';
 
 export const DataContext = createContext();
 
-const SAMPLE_PGS = [{
-    id: '1',
-    name: 'Sunshine Elite Stay',
-    address: '123 Tech Park Road, Hinjewadi Phase 1, Pune',
-    location: { latitude: 18.5913, longitude: 73.7389 },
-    totalRooms: 15, occupiedRooms: 12, totalBeds: 45, vacantBeds: 8,
-    facilities: ['Mess', 'Drinking Water', 'WiFi', 'Laundry', 'Power Backup'],
-    safetyMeasures: ['CCTV', '24/7 Security', 'Biometric Entry'],
-    gender: 'Female', rent: 8500, adminId: 'admin1',
-    images: [
-        'https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af?w=800',
-        'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=800',
-        'https://images.unsplash.com/photo-1540518614846-7eded433c457?w=800',
-    ],
-    rating: 4.8, reviews: 24,
-}];
-
-const SAMPLE_POSTS = [{
-    id: 'post_1', userId: 'user1', authorName: 'Aman Kumar',
-    title: 'Need a Cook for 3 People',
-    description: 'Looking for a cook who can make North Indian food twice a day in Hinjewadi Phase 1.',
-    category: 'Service', contactInfo: 'aman@example.com',
-    date: new Date().toISOString(), status: 'Active',
-}];
-
 const DEFAULT_SETTINGS = { platformFee: 5 };
 
-const SAMPLE_MESS_MENUS = [{
-    pgId: '1',
-    weeklyMenu: {
-        monday: { breakfast: 'Poha, Chai', lunch: 'Dal Rice, Roti, Salad', dinner: 'Paneer Butter Masala, Roti' },
-        tuesday: { breakfast: 'Upma, Coffee', lunch: 'Rajma Chawal, Raita', dinner: 'Chole, Rice, Roti' },
-        wednesday: { breakfast: 'Paratha, Curd', lunch: 'Sambar Rice, Papad', dinner: 'Mix Veg, Dal, Roti' },
-        thursday: { breakfast: 'Idli Sambhar', lunch: 'Kadhi Chawal, Salad', dinner: 'Aloo Gobi, Rice, Roti' },
-        friday: { breakfast: 'Bread Omelette', lunch: 'Biryani, Raita', dinner: 'Dal Makhani, Jeera Rice' },
-        saturday: { breakfast: 'Aloo Puri, Chai', lunch: 'Pav Bhaji', dinner: 'Paneer Tikka, Roti, Rice' },
-        sunday: { breakfast: 'Chole Bhature', lunch: 'Special Thali', dinner: 'Pasta, Garlic Bread, Soup' },
-    },
-    todaysSpecial: 'Gulab Jamun',
-    mealPlanPrice: 3000,
-    isVegOnly: true,
-}];
+const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
 
 async function loadOrSeed(getter, saver, seedData) {
     const data = await getter();
@@ -75,6 +37,7 @@ export const DataProvider = ({ children }) => {
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [payments, setPayments] = useState([]);
     const [messMenus, setMessMenus] = useState([]);
+    const [leaveRequests, setLeaveRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
 
     const persistAndSet = useCallback(async (saver, setter, newData) => {
@@ -91,31 +54,46 @@ export const DataProvider = ({ children }) => {
     const loadAllData = useCallback(async () => {
         try {
             await StorageService.ensureMigrations();
-            const [pgData, bookingsData, favoritesData, reviewsData, postsData, pendingData, usersData, disputeData, settingsData, paymentsData, messMenusData] = await Promise.all([
-                loadOrSeed(() => StorageService.getPgs(), (d) => StorageService.savePgs(d), SAMPLE_PGS),
+            let pgData = null;
+            let postsData = null;
+            let settingsData = null;
+
+            if (USE_BACKEND) {
+                pgData = await ApiClient.get('/pgs');
+                postsData = await ApiClient.get('/community');
+                settingsData = await ApiClient.get('/settings');
+            } else {
+                [pgData, postsData, settingsData] = await Promise.all([
+                    StorageService.getPgs(),
+                    StorageService.getCommunityPosts(),
+                    StorageService.getSettings(),
+                ]);
+            }
+
+            const [bookingsData, favoritesData, reviewsData, pendingData, usersData, disputeData, paymentsData, messMenusData, leaveRequestsData] = await Promise.all([
                 StorageService.getBookings(),
                 StorageService.getFavorites(),
                 StorageService.getReviews(),
-                loadOrSeed(() => StorageService.getCommunityPosts(), (d) => StorageService.saveCommunityPosts(d), SAMPLE_POSTS),
                 StorageService.getPendingPgs(),
                 StorageService.getUsers(),
                 StorageService.getDisputes(),
-                loadOrSeed(() => StorageService.getSettings(), (d) => StorageService.saveSettings(d), DEFAULT_SETTINGS),
                 StorageService.getPayments(),
-                loadOrSeed(() => StorageService.getMessMenus(), (d) => StorageService.saveMessMenus(d), SAMPLE_MESS_MENUS),
+                StorageService.getMessMenus(),
+                StorageService.getLeaveRequests(),
             ]);
 
-            if (pgData) setPgs(pgData);
+            if (pgData) setPgs(pgData || []);
             if (bookingsData) setBookings(bookingsData);
             setFavoritesByUser(normalizeFavoritesData(favoritesData));
             if (reviewsData) setReviews(reviewsData);
-            if (postsData) setCommunityPosts(postsData);
+            if (postsData) setCommunityPosts(postsData || []);
             if (pendingData) setPendingPgs(pendingData);
             if (usersData) setUsers(usersData);
             if (disputeData) setDisputes(disputeData);
-            if (settingsData) setSettings(settingsData);
+            if (settingsData) setSettings(settingsData || DEFAULT_SETTINGS);
             if (paymentsData) setPayments(paymentsData);
             if (messMenusData) setMessMenus(messMenusData);
+            if (leaveRequestsData) setLeaveRequests(leaveRequestsData);
         } catch (error) {
             console.error('DataContext - Error loading data:', error);
         } finally {
@@ -325,6 +303,42 @@ export const DataProvider = ({ children }) => {
         return persistAndSet(StorageService.saveMessMenus.bind(StorageService), setMessMenus, updated);
     }, [messMenus, persistAndSet]);
 
+    const addLeaveRequest = useCallback(async ({ userId, pgId, bookingId }) => {
+        const newRequest = {
+            id: generateId('leave_req'),
+            userId,
+            pgId,
+            bookingId,
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+        };
+        return persistAndSet(
+            StorageService.saveLeaveRequests.bind(StorageService),
+            setLeaveRequests,
+            [newRequest, ...leaveRequests],
+        );
+    }, [leaveRequests, persistAndSet]);
+
+    const updateLeaveRequestStatus = useCallback(async (requestId, status) => {
+        return persistAndSet(
+            StorageService.saveLeaveRequests.bind(StorageService),
+            setLeaveRequests,
+            leaveRequests.map((r) => (r.id === requestId ? { ...r, status } : r)),
+        );
+    }, [leaveRequests, persistAndSet]);
+
+    const approveLeaveRequest = useCallback(async (requestId) => {
+        const req = leaveRequests.find((r) => r.id === requestId);
+        if (!req) return false;
+        const bookingSuccess = await updateBooking(req.bookingId, { status: 'Completed' });
+        if (!bookingSuccess) return false;
+        return updateLeaveRequestStatus(requestId, 'approved');
+    }, [leaveRequests, updateBooking, updateLeaveRequestStatus]);
+
+    const rejectLeaveRequest = useCallback(async (requestId) => {
+        return updateLeaveRequestStatus(requestId, 'rejected');
+    }, [updateLeaveRequestStatus]);
+
     const contextValue = useMemo(() => ({
         pgs,
         bookings,
@@ -336,6 +350,7 @@ export const DataProvider = ({ children }) => {
         settings,
         payments,
         messMenus,
+        leaveRequests,
         isLoading,
         favoritesByUser,
         getFavoritesForUser,
@@ -360,14 +375,18 @@ export const DataProvider = ({ children }) => {
         addPayment,
         getMessMenuForPg,
         updateMessMenu,
+        addLeaveRequest,
+        approveLeaveRequest,
+        rejectLeaveRequest,
     }), [
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
-        settings, payments, messMenus, isLoading, favoritesByUser,
+        settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
         getFavoritesForUser, addPg, updatePg, deletePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
         toggleUserStatus, addDispute, updateDisputeStatus, updateSettings,
         addPayment, getMessMenuForPg, updateMessMenu,
+        addLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
     ]);
 
     return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;

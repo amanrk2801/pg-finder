@@ -11,7 +11,6 @@ export default function PendingApprovalScreen({ navigation }) {
 
     const handleLogout = () => {
         logout();
-        navigation.replace(ROUTES.LOGIN);
     };
 
     return (
