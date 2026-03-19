@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar,
+    View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,32 +22,42 @@ const FILTERS = [
 
 export default function UserDashboard({ navigation }) {
     const { user, logout } = useAuth();
-    const { pgs, getFavoritesForUser, toggleFavorite } = useData();
+    const { pgs, getFavoritesForUser, toggleFavorite, loadAllData } = useData();
     const [searchQuery, setSearchQuery] = useState('');
-    const [filteredPgs, setFilteredPgs] = useState(pgs);
+    const [filteredPgs, setFilteredPgs] = useState(pgs || []);
     const [selectedFilter, setSelectedFilter] = useState('all');
     const [viewMode, setViewMode] = useState('list');
+    const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
         Location.requestForegroundPermissionsAsync().catch(console.warn);
     }, []);
 
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadAllData();
+        setRefreshing(false);
+    };
+
     useEffect(() => {
-        let filtered = pgs;
+        let filtered = pgs || [];
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             filtered = filtered.filter(
-                (pg) => pg.name.toLowerCase().includes(q) || pg.address.toLowerCase().includes(q),
+                (pg) => pg && (
+                    (pg.name || '').toLowerCase().includes(q) || 
+                    (pg.address || '').toLowerCase().includes(q)
+                ),
             );
         }
 
         if (selectedFilter === 'budget') {
-            filtered = filtered.filter((pg) => pg.rent < 10000);
+            filtered = filtered.filter((pg) => pg && (pg.rent || 0) < 10000);
         } else if (selectedFilter === 'single') {
-            filtered = filtered.filter((pg) => pg.rent >= 12000);
+            filtered = filtered.filter((pg) => pg && (pg.rent || 0) >= 12000);
         } else if (selectedFilter !== 'all') {
-            filtered = filtered.filter((pg) => pg.gender.toLowerCase() === selectedFilter);
+            filtered = filtered.filter((pg) => pg && (pg.gender || '').toLowerCase() === selectedFilter);
         }
 
         setFilteredPgs(filtered);
@@ -63,7 +73,7 @@ export default function UserDashboard({ navigation }) {
 
             <ScreenHeader
                 title="Explore Stays"
-                subtitle="Find your perfect second home"
+                subtitle={`${(pgs || []).length} approved properties nearby`}
                 style={{ borderBottomWidth: 0, paddingBottom: 0 }}
                 rightComponent={
                     <View style={styles.headerActions}>
@@ -103,32 +113,38 @@ export default function UserDashboard({ navigation }) {
             </View>
 
             {viewMode === 'list' ? (
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                <ScrollView 
+                    style={styles.content} 
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+                    }
+                >
                     <Text style={styles.resultsText}>
-                        {filteredPgs.length} {filteredPgs.length === 1 ? 'Property' : 'Properties'} found
+                        {(filteredPgs || []).length} {(filteredPgs || []).length === 1 ? 'Property' : 'Properties'} found
                     </Text>
 
-                    {filteredPgs.length === 0 ? (
+                    {(filteredPgs || []).length === 0 ? (
                         <EmptyState
                             icon="search-outline"
                             title="No properties found"
                             message="Try adjusting your search filters or area"
                         />
                     ) : (
-                        filteredPgs.map((pg) => (
+                        (filteredPgs || []).map((pg) => (
                             <PGCard
-                                key={pg.id}
+                                key={pg.id || pg._id || Math.random().toString()}
                                 pg={pg}
                                 onPress={() => navigation.navigate(ROUTES.USER.PG_DETAILS, { pg })}
-                                isFavorite={getFavoritesForUser(user?.id).includes(pg.id)}
-                                onToggleFavorite={() => toggleFavorite(user?.id, pg.id)}
+                                isFavorite={getFavoritesForUser(user?.id)?.includes(pg.id || pg._id)}
+                                onToggleFavorite={() => toggleFavorite(user?.id, pg.id || pg._id)}
                             />
                         ))
                     )}
                     <View style={{ height: 100 }} />
                 </ScrollView>
             ) : (
-                <MapScreen filteredPgs={filteredPgs} navigation={navigation} />
+                <MapScreen filteredPgs={filteredPgs || []} navigation={navigation} />
             )}
 
             <TouchableOpacity

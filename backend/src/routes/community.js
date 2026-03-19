@@ -4,7 +4,37 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Public: list posts
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     CommunityPost:
+ *       type: object
+ *       required:
+ *         - title
+ *         - description
+ *       properties:
+ *         title:
+ *           type: string
+ *         description:
+ *           type: string
+ *         type:
+ *           type: string
+ *           enum: [Rent, Sell, Issue, Other]
+ *         contactInfo:
+ *           type: string
+ */
+
+/**
+ * @swagger
+ * /community:
+ *   get:
+ *     summary: List all community posts
+ *     tags: [Community]
+ *     responses:
+ *       200:
+ *         description: List of posts
+ */
 router.get('/', async (req, res, next) => {
   try {
     const posts = await CommunityPost.find().sort({ createdAt: -1 }).lean();
@@ -14,7 +44,24 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// User: create post
+/**
+ * @swagger
+ * /community:
+ *   post:
+ *     summary: Create a community post (User only)
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CommunityPost'
+ *     responses:
+ *       201:
+ *         description: Created
+ */
 router.post('/', auth(['user']), async (req, res, next) => {
   try {
     const post = await CommunityPost.create({
@@ -28,4 +75,3 @@ router.post('/', auth(['user']), async (req, res, next) => {
 });
 
 module.exports = router;
-

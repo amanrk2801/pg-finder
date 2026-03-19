@@ -4,16 +4,24 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// User: record a payment (to be called after gateway success)
-router.post('/', auth(['user']), async (req, res, next) => {
+/**
+ * @swagger
+ * /payments:
+ *   post:
+ *     summary: Record a payment
+ *     tags: [Payments]
+ */
+router.post('/', auth(['user', 'admin', 'superadmin']), async (req, res, next) => {
   try {
     const {
-      bookingId, amount, method, transactionId, month, year,
+      bookingId, amount, commissionAmount, adminRevenue, method, transactionId, month, year,
     } = req.body;
     const payment = await Payment.create({
       bookingId,
       userId: req.user.id,
       amount,
+      commissionAmount: commissionAmount || 0,
+      adminRevenue: adminRevenue || amount,
       method,
       transactionId,
       month,
@@ -26,10 +34,17 @@ router.post('/', auth(['user']), async (req, res, next) => {
   }
 });
 
-// User: list own payments
-router.get('/me', auth(['user']), async (req, res, next) => {
+/**
+ * @swagger
+ * /payments/me:
+ *   get:
+ *     summary: Get payments
+ *     tags: [Payments]
+ */
+router.get('/me', auth(['user', 'admin', 'superadmin']), async (req, res, next) => {
   try {
-    const payments = await Payment.find({ userId: req.user.id }).lean();
+    const filter = req.user.type === 'superadmin' ? {} : { userId: req.user.id };
+    const payments = await Payment.find(filter).lean();
     res.json(payments);
   } catch (err) {
     next(err);
@@ -37,4 +52,3 @@ router.get('/me', auth(['user']), async (req, res, next) => {
 });
 
 module.exports = router;
-

@@ -1,8 +1,8 @@
-import React, { createContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useMemo, useCallback, useContext } from 'react';
 import StorageService from '../services/StorageService';
-import { AUTH_CONFIG } from '../constants/auth';
 import ApiClient from '../services/ApiClient';
 import { generateId } from '../utils/id';
+import { DataContext } from './DataContext';
 
 export const AuthContext = createContext();
 
@@ -12,6 +12,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userType, setUserType] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const dataContext = useContext(DataContext);
 
   const loadUser = useCallback(async () => {
     try {
@@ -35,22 +36,59 @@ export const AuthProvider = ({ children }) => {
     try {
       const normalizedEmail = email.trim().toLowerCase();
 
-      // Superadmin stays env-based, same as before
-      if (
-        type === 'superadmin' &&
-        AUTH_CONFIG.isSuperAdminEnabled &&
-        normalizedEmail === AUTH_CONFIG.superAdminEmail?.toLowerCase() &&
-        password === AUTH_CONFIG.superAdminPassword
-      ) {
-        const adminData = { email: normalizedEmail, id: 'superadmin_1', name: 'Super Admin' };
-        await StorageService.saveUserSession({ userData: adminData, type: 'superadmin' });
-        setUser(adminData);
-        setUserType('superadmin');
+      // ALWAYS USE BACKEND IF ENABLED (Ensures we get a REAL token for Superadmin too)
+      if (USE_BACKEND) {
+        const response = await ApiClient.post('/auth/login', { email: normalizedEmail, password, type });
+        const { token, user: apiUser } = response;
+        
+        const session = {
+          userData: apiUser,
+          type: apiUser.type,
+          token,
+        };
+        await StorageService.saveUserSession(session);
+        setUser(apiUser);
+        setUserType(apiUser.type);
+
+        if (dataContext?.loadAllData) {
+            await dataContext.loadAllData(token, apiUser.type);
+        }
+
         return true;
       }
 
+      // Legacy local-only mode
+      const allUsers = (await StorageService.getUsers()) || [];
+      const existingUser = allUsers.find((u) => u.email === normalizedEmail);
+
+      if (existingUser) {
+        if (existingUser.type !== type && !(existingUser.type === 'pending_admin' && type === 'admin')) {
+          return false;
+        }
+        const userData = {
+          email: normalizedEmail,
+          id: existingUser.id,
+          name: existingUser.name || '',
+          phone: existingUser.phone || '',
+        };
+        await StorageService.saveUserSession({ userData, type: existingUser.type });
+        setUser(userData);
+        setUserType(existingUser.type);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('AuthContext - Login error:', error);
+      throw error; // Throw so UI can catch specific backend messages
+    }
+  }, [dataContext]);
+
+  const register = useCallback(async (email, password, type, name, phone) => {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+
       if (USE_BACKEND) {
-        const response = await ApiClient.post('/auth/login', { email: normalizedEmail, password, type });
+        const response = await ApiClient.post('/auth/register', { email: normalizedEmail, password, type, name, phone });
         const { token, user: apiUser } = response;
         const session = {
           userData: apiUser,
@@ -60,39 +98,32 @@ export const AuthProvider = ({ children }) => {
         await StorageService.saveUserSession(session);
         setUser(apiUser);
         setUserType(apiUser.type);
+
+        if (dataContext?.loadAllData) {
+            await dataContext.loadAllData(token, apiUser.type);
+        }
+
         return true;
       }
 
-      // Legacy local-only mode (no backend)
       const allUsers = (await StorageService.getUsers()) || [];
       const existingUser = allUsers.find((u) => u.email === normalizedEmail);
+      if (existingUser) return false;
 
-      let userData;
-      if (existingUser) {
-        if (existingUser.type !== type) {
-          return false;
-        }
-        userData = {
-          email: normalizedEmail,
-          id: existingUser.id,
-          name: existingUser.name || '',
-          phone: existingUser.phone || '',
-        };
-      } else {
-        userData = { email: normalizedEmail, id: generateId('user') };
-        allUsers.push({ ...userData, type, status: 'active', joinedAt: new Date().toISOString() });
-        await StorageService.saveUsers(allUsers);
-      }
-
-      await StorageService.saveUserSession({ userData, type });
+      const assignedType = type === 'admin' ? 'pending_admin' : 'user';
+      const userData = { email: normalizedEmail, id: generateId('user'), name, phone };
+      allUsers.push({ ...userData, type: assignedType, status: 'active', joinedAt: new Date().toISOString() });
+      await StorageService.saveUsers(allUsers);
+      
+      await StorageService.saveUserSession({ userData, type: assignedType });
       setUser(userData);
-      setUserType(type);
+      setUserType(assignedType);
       return true;
     } catch (error) {
-      console.error('AuthContext - Login error:', error);
-      return false;
+      console.error('AuthContext - Register error:', error);
+      throw error;
     }
-  }, []);
+  }, [dataContext]);
 
   const logout = useCallback(async () => {
     try {
@@ -121,9 +152,10 @@ export const AuthProvider = ({ children }) => {
     userType,
     isLoading,
     login,
+    register,
     logout,
     updateUserProfile,
-  }), [user, userType, isLoading, login, logout, updateUserProfile]);
+  }), [user, userType, isLoading, login, register, logout, updateUserProfile]);
 
   return (
     <AuthContext.Provider value={contextValue}>

@@ -20,24 +20,26 @@ export default function CommunityScreen({ navigation }) {
     const { communityPosts, deleteCommunityPost } = useData();
 
     const [searchQuery, setSearchQuery] = useState('');
-    const [filteredPosts, setFilteredPosts] = useState(communityPosts);
+    const [filteredPosts, setFilteredPosts] = useState(communityPosts || []);
     const [selectedFilter, setSelectedFilter] = useState('All');
 
     useEffect(() => {
-        let filtered = communityPosts;
+        let filtered = communityPosts || [];
 
         if (searchQuery) {
             const q = searchQuery.toLowerCase();
             filtered = filtered.filter(
                 (post) =>
-                    post.title.toLowerCase().includes(q) ||
-                    post.description.toLowerCase().includes(q) ||
-                    post.category.toLowerCase().includes(q),
+                    post && (
+                        (post.title || '').toLowerCase().includes(q) ||
+                        (post.description || '').toLowerCase().includes(q) ||
+                        (post.category || '').toLowerCase().includes(q)
+                    )
             );
         }
 
         if (selectedFilter !== 'All') {
-            filtered = filtered.filter((post) => post.category === selectedFilter);
+            filtered = filtered.filter((post) => post && post.category === selectedFilter);
         }
 
         setFilteredPosts(filtered);
@@ -69,19 +71,19 @@ export default function CommunityScreen({ navigation }) {
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                 <Text style={styles.resultsText}>
-                    {filteredPosts.length} {filteredPosts.length === 1 ? 'Post' : 'Posts'} found
+                    {(filteredPosts || []).length} {(filteredPosts || []).length === 1 ? 'Post' : 'Posts'} found
                 </Text>
 
-                {filteredPosts.length === 0 ? (
+                {(filteredPosts || []).length === 0 ? (
                     <EmptyState
                         icon="people-outline"
                         title="No posts found"
                         message="Be the first to ask for help or offer a service!"
                     />
                 ) : (
-                    filteredPosts.map((post) => (
+                    (filteredPosts || []).map((post) => (
                         <PostCard
-                            key={post.id}
+                            key={post.id || post._id || Math.random().toString()}
                             post={post}
                             currentUserId={user?.id}
                             onDelete={deleteCommunityPost}

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
 
 const FilterChips = ({
-    filters,
+    filters = [],
     selectedId,
     onSelect,
     showIcons = false,
@@ -15,7 +15,7 @@ const FilterChips = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.container, style]}
     >
-        {filters.map((filter) => {
+        {(filters || []).map((filter) => {
             const isActive = selectedId === filter.id;
             return (
                 <TouchableOpacity

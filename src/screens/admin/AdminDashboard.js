@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useData } from '../../hooks';
@@ -16,12 +16,23 @@ const STAT_CONFIGS = [
 
 export default function AdminDashboard({ navigation }) {
     const { user } = useAuth();
-    const { pgs } = useData();
+    const { pgs, pendingPgs, loadAllData } = useData();
+    const [refreshing, setRefreshing] = useState(false);
 
-    const myPgs = (pgs || []).filter((pg) => pg.adminId === user?.id);
-    const totalRooms = myPgs.reduce((sum, pg) => sum + (pg.totalRooms || 0), 0);
-    const vacantBeds = myPgs.reduce((sum, pg) => sum + (pg.vacantBeds || 0), 0);
-    const statValues = [myPgs.length, totalRooms, vacantBeds];
+    // Combine approved and pending PGs for the Admin's own view with defensive checks
+    const myPgs = (pgs || []).filter((pg) => pg && pg.adminId === user?.id);
+    const myPendingPgs = (pendingPgs || []).filter((pg) => pg && pg.adminId === user?.id);
+    const allMyPgs = [...myPgs, ...myPendingPgs];
+
+    const totalRooms = allMyPgs.reduce((sum, pg) => sum + (pg?.totalRooms || 0), 0);
+    const vacantBeds = allMyPgs.reduce((sum, pg) => sum + (pg?.vacantBeds || 0), 0);
+    const statValues = [allMyPgs.length, totalRooms, vacantBeds];
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadAllData();
+        setRefreshing(false);
+    };
 
     return (
         <SafeAreaView style={styles.container}>
@@ -41,7 +52,13 @@ export default function AdminDashboard({ navigation }) {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+                style={styles.content} 
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+                }
+            >
                 <View style={styles.statsContainer}>
                     {STAT_CONFIGS.map((cfg, idx) => (
                         <View key={cfg.label} style={[styles.statCard, { backgroundColor: cfg.bg }]}>
@@ -49,7 +66,7 @@ export default function AdminDashboard({ navigation }) {
                                 <Text style={styles.cornerIcon}>{cfg.emoji}</Text>
                             </View>
                             <View style={styles.statCenterContent}>
-                                <Text style={[styles.centerNumber, { color: cfg.numColor }]}>{statValues[idx]}</Text>
+                                <Text style={[styles.centerNumber, { color: cfg.numColor }]}>{statValues[idx] || 0}</Text>
                                 <Text style={styles.statLabel}>{cfg.label}</Text>
                             </View>
                         </View>
@@ -68,10 +85,10 @@ export default function AdminDashboard({ navigation }) {
                     <Text style={styles.addButtonArrow}>→</Text>
                 </TouchableOpacity>
 
-                {myPgs.length > 0 && (
+                {allMyPgs.length > 0 && (
                     <TouchableOpacity
                         style={styles.menuButton}
-                        onPress={() => navigation.navigate(ROUTES.ADMIN.MANAGE_MENU, { pgId: myPgs[0].id })}
+                        onPress={() => navigation.navigate(ROUTES.ADMIN.MANAGE_MENU, { pgId: allMyPgs[0].id || allMyPgs[0]._id })}
                         activeOpacity={0.8}
                     >
                         <View style={styles.menuButtonIconContainer}>
@@ -84,23 +101,29 @@ export default function AdminDashboard({ navigation }) {
 
                 <View style={styles.listHeader}>
                     <Text style={styles.sectionTitle}>My Properties</Text>
-                    <Text style={styles.propertyCount}>{myPgs.length} Total</Text>
+                    <Text style={styles.propertyCount}>{allMyPgs.length} Total</Text>
                 </View>
 
-                {myPgs.length === 0 ? (
+                {allMyPgs.length === 0 ? (
                     <EmptyState
                         icon="business-outline"
                         title="No properties yet"
                         message="Add your first property to start managing your portfolio."
                     />
                 ) : (
-                    myPgs.map((pg) => (
-                        <PGCard
-                            key={pg.id}
-                            pg={pg}
-                            onPress={() => navigation.navigate(ROUTES.ADMIN.PG_DETAILS, { pg })}
-                            showFavoriteIcon={false}
-                        />
+                    allMyPgs.map((pg) => (
+                        <View key={pg.id || pg._id || Math.random().toString()}>
+                            {pg.status === 'pending' && (
+                                <View style={styles.pendingBadge}>
+                                    <Text style={styles.pendingText}>Verification Pending</Text>
+                                </View>
+                            )}
+                            <PGCard
+                                pg={pg}
+                                onPress={() => navigation.navigate(ROUTES.ADMIN.PG_DETAILS, { pg })}
+                                showFavoriteIcon={false}
+                            />
+                        </View>
                     ))
                 )}
                 <View style={{ height: 100 }} />
@@ -143,7 +166,7 @@ const styles = StyleSheet.create({
     addButton: {
         flexDirection: 'row', backgroundColor: COLORS.primary,
         marginHorizontal: SPACING.xxl, padding: SPACING.md,
-        borderRadius: BORDER_RADIUS.xl, alignItems: 'center', marginBottom: SPACING.xxxl, ...SHADOWS.medium,
+        borderRadius: BORDER_RADIUS.xl, alignItems: 'center', marginBottom: SPACING.md, ...SHADOWS.medium,
     },
     addButtonIconContainer: {
         width: 40, height: 40, borderRadius: BORDER_RADIUS.lg,
@@ -168,4 +191,10 @@ const styles = StyleSheet.create({
     },
     sectionTitle: { ...TYPOGRAPHY.h4, color: COLORS.black },
     propertyCount: { fontSize: FONT_SIZES.sm, color: COLORS.gray, fontWeight: FONT_WEIGHTS.semibold, paddingBottom: 2 },
+    pendingBadge: {
+        backgroundColor: '#FFF3E0', paddingHorizontal: 12, paddingVertical: 4,
+        borderRadius: 4, marginHorizontal: SPACING.xxl, marginBottom: -10,
+        zIndex: 1, alignSelf: 'flex-start', borderLeftWidth: 3, borderLeftColor: '#FF9800',
+    },
+    pendingText: { fontSize: 10, color: '#E65100', fontWeight: 'bold' },
 });

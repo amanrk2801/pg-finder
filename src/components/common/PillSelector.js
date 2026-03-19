@@ -2,10 +2,10 @@ import React from 'react';
 import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
 
-const PillSelector = ({ options, selectedKeys, onToggle, style }) => (
+const PillSelector = ({ options = [], selectedKeys = [], onToggle, style }) => (
     <View style={[styles.container, style]}>
-        {options.map(({ key, label }) => {
-            const isSelected = selectedKeys.includes(key);
+        {(options || []).map(({ key, label }) => {
+            const isSelected = (selectedKeys || []).includes(key);
             return (
                 <TouchableOpacity
                     key={key}

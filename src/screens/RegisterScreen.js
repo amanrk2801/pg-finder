@@ -27,7 +27,6 @@ import {
 import { CustomInput, CustomButton } from '../components/common';
 
 const { height } = Dimensions.get('window');
-const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
 
 export default function RegisterScreen({ navigation }) {
   const [name, setName] = useState('');
@@ -35,7 +34,9 @@ export default function RegisterScreen({ navigation }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const { login } = useAuth();
+  const [selectedType, setSelectedType] = useState('user'); // Default to user
+  const [isRegistering, setIsRegistering] = useState(false);
+  const { register } = useAuth();
 
   const scrollViewRef = useRef(null);
   const emailInputRef = useRef(null);
@@ -48,7 +49,7 @@ export default function RegisterScreen({ navigation }) {
   const handleRegister = useCallback(async () => {
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail || !password || !confirmPassword) {
+    if (!normalizedEmail || !password || !confirmPassword || !name || !phone) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
@@ -68,23 +69,26 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    Keyboard.dismiss();
-
-    if (USE_BACKEND) {
-      // In backend mode, registration should hit the API via login/register flow there.
-      const success = await login(normalizedEmail, password, 'user');
-      if (!success) {
-        Alert.alert('Registration failed', 'Unable to create your account. Please try again.');
-      }
+    if (phone.length !== 10) {
+      Alert.alert('Error', 'Phone number must be exactly 10 digits.');
       return;
     }
 
-    // Local/demo mode: reuse login(type='user') which auto-creates users in AsyncStorage.
-    const success = await login(normalizedEmail, password, 'user');
-    if (!success) {
-      Alert.alert('Registration failed', 'Unable to create your account. Please try again.');
+    Keyboard.dismiss();
+    setIsRegistering(true);
+
+    try {
+      // Pass the selectedType (user or admin)
+      const success = await register(normalizedEmail, password, selectedType, name, phone);
+      if (!success) {
+        Alert.alert('Registration failed', 'Unable to create your account. Please try again.');
+      }
+    } catch (err) {
+      Alert.alert('Registration Error', err.message || 'Something went wrong');
+    } finally {
+      setIsRegistering(false);
     }
-  }, [email, password, confirmPassword, login]);
+  }, [email, password, confirmPassword, name, phone, selectedType, register]);
 
   return (
     <KeyboardAvoidingView
@@ -119,7 +123,25 @@ export default function RegisterScreen({ navigation }) {
 
         <View style={styles.card}>
           <Text style={styles.welcomeText}>Create Account</Text>
-          <Text style={styles.subtitleText}>Sign up as a tenant</Text>
+          
+          <View style={styles.typeSelector}>
+            {[
+                { type: 'user', label: 'Tenant', emoji: '👤' },
+                { type: 'admin', label: 'Owner', emoji: '👨‍💼' },
+            ].map(({ type, label, emoji }) => (
+                <TouchableOpacity
+                    key={type}
+                    style={[styles.typeButton, selectedType === type && styles.typeButtonActive]}
+                    onPress={() => setSelectedType(type)}
+                    activeOpacity={0.8}
+                >
+                    <Text style={styles.typeEmoji}>{emoji}</Text>
+                    <Text style={[styles.typeText, selectedType === type && styles.typeTextActive]}>
+                        {label}
+                    </Text>
+                </TouchableOpacity>
+            ))}
+          </View>
 
           <CustomInput
             label="Full Name"
@@ -145,18 +167,19 @@ export default function RegisterScreen({ navigation }) {
           <CustomInput
             ref={phoneInputRef}
             label="Phone Number"
-            placeholder="e.g., +91 9876543210"
+            placeholder="e.g., 9876543210"
             value={phone}
             onChangeText={setPhone}
             icon="call-outline"
             keyboardType="phone-pad"
             returnKeyType="next"
+            maxLength={10}
             onSubmitEditing={() => passwordInputRef.current?.focus()}
           />
           <CustomInput
             ref={passwordInputRef}
             label="Password"
-            placeholder="Create a password"
+            placeholder="Create a password (min 6 chars)"
             value={password}
             onChangeText={setPassword}
             icon="lock-closed-outline"
@@ -179,6 +202,8 @@ export default function RegisterScreen({ navigation }) {
           <CustomButton
             title="Create Account"
             onPress={handleRegister}
+            loading={isRegistering}
+            disabled={isRegistering}
             style={{ marginTop: 6, marginBottom: SPACING.lg }}
           />
 
@@ -261,8 +286,19 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 20,
   },
-  welcomeText: { ...TYPOGRAPHY.h1, color: COLORS.black, marginBottom: 4 },
-  subtitleText: { fontSize: FONT_SIZES.md, color: COLORS.gray, marginBottom: SPACING.xxl },
+  welcomeText: { ...TYPOGRAPHY.h1, color: COLORS.black, marginBottom: SPACING.lg },
+  typeSelector: {
+    flexDirection: 'row', marginBottom: SPACING.xl,
+    backgroundColor: COLORS.backgroundGray, borderRadius: BORDER_RADIUS.xl, padding: 6,
+  },
+  typeButton: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 12, borderRadius: BORDER_RADIUS.lg, backgroundColor: 'transparent',
+  },
+  typeButtonActive: { backgroundColor: COLORS.white, ...SHADOWS.small },
+  typeEmoji: { fontSize: 16, marginRight: 8 },
+  typeText: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.gray },
+  typeTextActive: { color: COLORS.primary },
   switchAuthRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -287,4 +323,3 @@ const styles = StyleSheet.create({
   },
   keyboardSpacer: { height: 60 },
 });
-

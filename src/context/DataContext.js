@@ -7,17 +7,8 @@ export const DataContext = createContext();
 
 const DEFAULT_SETTINGS = { platformFee: 5 };
 
-const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
-
-async function loadOrSeed(getter, saver, seedData) {
-    const data = await getter();
-    if (data) return data;
-    if (seedData) {
-        await saver(seedData);
-        return seedData;
-    }
-    return null;
-}
+// FORCE REAL BACKEND DATA
+const USE_BACKEND = true;
 
 function normalizeFavoritesData(data) {
     if (!data) return {};
@@ -51,51 +42,84 @@ export const DataProvider = ({ children }) => {
         }
     }, []);
 
-    const loadAllData = useCallback(async () => {
+    const savePgsInternal = useCallback(async (newPgs) => {
+        await persistAndSet(StorageService.savePgs.bind(StorageService), setPgs, newPgs);
+    }, [persistAndSet]);
+
+    const loadAllData = useCallback(async (passedToken = null, passedType = null) => {
         try {
             await StorageService.ensureMigrations();
-            let pgData = null;
-            let postsData = null;
-            let settingsData = null;
+            const session = await StorageService.getUserSession();
+            
+            const token = passedToken || session?.token;
+            const userType = passedType || session?.type;
 
-            if (USE_BACKEND) {
-                pgData = await ApiClient.get('/pgs');
-                postsData = await ApiClient.get('/community');
-                settingsData = await ApiClient.get('/settings');
-            } else {
-                [pgData, postsData, settingsData] = await Promise.all([
-                    StorageService.getPgs(),
-                    StorageService.getCommunityPosts(),
-                    StorageService.getSettings(),
+            let pgData = [];
+            let postsData = [];
+            let settingsData = DEFAULT_SETTINGS;
+            let bookingsData = [];
+            let reviewsData = [];
+            let paymentsData = [];
+            let disputeData = [];
+            let messMenusData = [];
+            let leaveRequestsData = [];
+            let usersData = [];
+
+            console.log('--- DATA FETCH: STARTING REAL API LOAD ---');
+            
+            const opts = token ? { token } : {};
+            
+            try {
+                const [p, c, s] = await Promise.all([
+                    ApiClient.get('/pgs', opts),
+                    ApiClient.get('/community'),
+                    ApiClient.get('/settings'),
                 ]);
+                pgData = p || [];
+                postsData = c || [];
+                settingsData = s || DEFAULT_SETTINGS;
+            } catch (err) {
+                console.warn('Public/PG data fetch failed:', err.message);
             }
 
-            const [bookingsData, favoritesData, reviewsData, pendingData, usersData, disputeData, paymentsData, messMenusData, leaveRequestsData] = await Promise.all([
-                StorageService.getBookings(),
-                StorageService.getFavorites(),
-                StorageService.getReviews(),
-                StorageService.getPendingPgs(),
-                StorageService.getUsers(),
-                StorageService.getDisputes(),
-                StorageService.getPayments(),
-                StorageService.getMessMenus(),
-                StorageService.getLeaveRequests(),
-            ]);
+            if (token) {
+                console.log(`--- FETCHING PRIVATE DATA FOR ${userType} ---`);
+                try {
+                    const [b, pay, d, l] = await Promise.all([
+                        ApiClient.get('/bookings/me', opts),
+                        ApiClient.get('/payments/me', opts),
+                        ApiClient.get('/disputes/me', opts),
+                        ApiClient.get('/leaves/me', opts),
+                    ]);
+                    bookingsData = b || [];
+                    paymentsData = pay || [];
+                    disputeData = d || [];
+                    leaveRequestsData = l || [];
 
-            if (pgData) setPgs(pgData || []);
-            if (bookingsData) setBookings(bookingsData);
-            setFavoritesByUser(normalizeFavoritesData(favoritesData));
-            if (reviewsData) setReviews(reviewsData);
-            if (postsData) setCommunityPosts(postsData || []);
-            if (pendingData) setPendingPgs(pendingData);
-            if (usersData) setUsers(usersData);
-            if (disputeData) setDisputes(disputeData);
-            if (settingsData) setSettings(settingsData || DEFAULT_SETTINGS);
-            if (paymentsData) setPayments(paymentsData);
-            if (messMenusData) setMessMenus(messMenusData);
-            if (leaveRequestsData) setLeaveRequests(leaveRequestsData);
+                    if (userType === 'superadmin') {
+                        usersData = await ApiClient.get('/auth/users', opts).catch(() => []);
+                    }
+                } catch (err) {
+                    console.warn('Private data fetch failed:', err.message);
+                }
+            }
+
+            setPgs((pgData || []).filter(p => p.status === 'approved'));
+            setPendingPgs((pgData || []).filter(p => p.status === 'pending'));
+            setBookings(bookingsData);
+            setFavoritesByUser(normalizeFavoritesData(await StorageService.getFavorites()));
+            setReviews(reviewsData);
+            setCommunityPosts(postsData);
+            setUsers(usersData);
+            setDisputes(disputeData);
+            setSettings(settingsData);
+            setPayments(paymentsData);
+            setMessMenus(messMenusData);
+            setLeaveRequests(leaveRequestsData);
+            
+            console.log('--- DATA FETCH: COMPLETE ---');
         } catch (error) {
-            console.error('DataContext - Error loading data:', error);
+            console.error('DataContext - Global Load Error:', error);
         } finally {
             setIsLoading(false);
         }
@@ -103,48 +127,65 @@ export const DataProvider = ({ children }) => {
 
     useEffect(() => { loadAllData(); }, [loadAllData]);
 
-    const savePgsInternal = useCallback(async (newPgs) => {
-        await persistAndSet(StorageService.savePgs.bind(StorageService), setPgs, newPgs);
-    }, [persistAndSet]);
-
     const addPg = useCallback(async (pg) => {
-        const newPg = { ...pg, id: generateId('pg') };
-        await savePgsInternal([...pgs, newPg]);
-    }, [pgs, savePgsInternal]);
+        const result = await ApiClient.post('/pgs', pg);
+        if (result) {
+            if (result.status === 'approved') {
+                setPgs(prev => [...(prev || []), result]);
+            } else {
+                setPendingPgs(prev => [...(prev || []), result]);
+            }
+            return true;
+        }
+        return false;
+    }, []);
 
     const updatePg = useCallback(async (id, updatedData) => {
-        await savePgsInternal(pgs.map((pg) => (pg.id === id ? { ...pg, ...updatedData } : pg)));
-    }, [pgs, savePgsInternal]);
+        try {
+            console.log(`[DataContext] Updating PG ${id}...`);
+            const updated = await ApiClient.put(`/pgs/${id}`, updatedData);
+            if (updated) {
+                // Remove from both first, then re-add to correct one based on status
+                setPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+                setPendingPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+
+                if (updated.status === 'approved') {
+                    setPgs(prev => [...(prev || []), updated]);
+                } else {
+                    setPendingPgs(prev => [...(prev || []), updated]);
+                }
+                return true;
+            }
+        } catch (err) {
+            console.error('[DataContext] updatePg Error:', err.message);
+        }
+        return false;
+    }, []);
 
     const deletePg = useCallback(async (id) => {
-        await savePgsInternal(pgs.filter((pg) => pg.id !== id));
-    }, [pgs, savePgsInternal]);
+        setPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+        setPendingPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+        return true;
+    }, []);
 
-    const addBooking = useCallback(async (userId, pgId, { monthlyRent, mealPlan = null, paymentMethod = 'upi' } = {}) => {
-        const now = new Date();
-        const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        const newBooking = {
-            id: generateId('booking'), userId, pgId,
-            date: now.toISOString(), status: 'Confirmed',
-            monthlyRent: monthlyRent || 0,
-            nextDueDate: nextDue.toISOString(),
-            paymentMethod,
-            mealPlan,
-        };
-        return persistAndSet(StorageService.saveBookings.bind(StorageService), setBookings, [...bookings, newBooking]);
-    }, [bookings, persistAndSet]);
+    const addBooking = useCallback(async (userId, pgId, { monthlyRent } = {}) => {
+        const booking = await ApiClient.post('/bookings', { pgId, monthlyRent });
+        if (booking) {
+            setBookings(prev => [...(prev || []), booking]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const updateBooking = useCallback(async (bookingId, updates) => {
-        return persistAndSet(
-            StorageService.saveBookings.bind(StorageService),
-            setBookings,
-            bookings.map((b) => (b.id === bookingId ? { ...b, ...updates } : b)),
-        );
-    }, [bookings, persistAndSet]);
+        setBookings(prev => (prev || []).map(b => (b.id === bookingId || b._id === bookingId ? { ...b, ...updates } : b)));
+        return true;
+    }, []);
 
     const clearBookings = useCallback(async (userId) => {
-        await persistAndSet(StorageService.saveBookings.bind(StorageService), setBookings, bookings.filter((b) => b.userId !== userId));
-    }, [bookings, persistAndSet]);
+        setBookings(prev => (prev || []).filter(b => b.userId !== userId));
+        return true;
+    }, []);
 
     const getFavoritesForUser = useCallback((userId) => {
         if (!userId) return [];
@@ -153,240 +194,174 @@ export const DataProvider = ({ children }) => {
 
     const toggleFavorite = useCallback(async (userId, pgId) => {
         if (!userId) return false;
-
-        const current = favoritesByUser[userId] || favoritesByUser.__legacy || [];
+        const current = favoritesByUser[userId] || [];
         const updatedUserFavorites = current.includes(pgId)
             ? current.filter((id) => id !== pgId)
             : [...current, pgId];
-
-        const updated = {
-            ...favoritesByUser,
-            [userId]: updatedUserFavorites,
-        };
-
-        if (favoritesByUser.__legacy) {
-            delete updated.__legacy;
-        }
-
+        const updated = { ...favoritesByUser, [userId]: updatedUserFavorites };
         return persistAndSet(StorageService.saveFavorites.bind(StorageService), setFavoritesByUser, updated);
     }, [favoritesByUser, persistAndSet]);
 
     const addReview = useCallback(async (review) => {
-        const newReview = { ...review, id: generateId('review'), date: new Date().toISOString() };
-        const updatedReviews = [...reviews, newReview];
-        await persistAndSet(StorageService.saveReviews.bind(StorageService), setReviews, updatedReviews);
-
-        const pgReviews = updatedReviews.filter((r) => r.pgId === review.pgId);
-        const avgRating = pgReviews.reduce((sum, r) => sum + r.rating, 0) / pgReviews.length;
-        await savePgsInternal(pgs.map((p) => (p.id === review.pgId ? {
-            ...p,
-            rating: parseFloat(avgRating.toFixed(1)),
-            reviews: pgReviews.length,
-        } : p)));
-    }, [reviews, pgs, persistAndSet, savePgsInternal]);
+        const newReview = await ApiClient.post('/reviews', review);
+        if (newReview) {
+            setReviews(prev => [...(prev || []), newReview]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const addCommunityPost = useCallback(async (post) => {
-        const newPost = { ...post, id: generateId('post'), date: new Date().toISOString(), status: 'Active' };
-        await persistAndSet(StorageService.saveCommunityPosts.bind(StorageService), setCommunityPosts, [newPost, ...communityPosts]);
-    }, [communityPosts, persistAndSet]);
+        const newPost = await ApiClient.post('/community', post);
+        if (newPost) {
+            setCommunityPosts(prev => [newPost, ...(prev || [])]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const updateCommunityPost = useCallback(async (id, updatedData) => {
-        await persistAndSet(
-            StorageService.saveCommunityPosts.bind(StorageService),
-            setCommunityPosts,
-            communityPosts.map((p) => (p.id === id ? { ...p, ...updatedData } : p)),
-        );
-    }, [communityPosts, persistAndSet]);
+        setCommunityPosts(prev => (prev || []).map(p => (p.id === id || p._id === id ? { ...p, ...updatedData } : p)));
+        return true;
+    }, []);
 
     const deleteCommunityPost = useCallback(async (id) => {
-        await persistAndSet(
-            StorageService.saveCommunityPosts.bind(StorageService),
-            setCommunityPosts,
-            communityPosts.filter((p) => p.id !== id),
-        );
-    }, [communityPosts, persistAndSet]);
+        setCommunityPosts(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+        return true;
+    }, []);
 
     const addPendingPg = useCallback(async (pgData) => {
-        const newRequest = { ...pgData, id: generateId('pending_pg'), status: 'pending', dateSubmitted: new Date().toISOString() };
-        return persistAndSet(StorageService.savePendingPgs.bind(StorageService), setPendingPgs, [...pendingPgs, newRequest]);
-    }, [pendingPgs, persistAndSet]);
+        return addPg({ ...pgData, status: 'pending' });
+    }, [addPg]);
 
     const approvePendingPg = useCallback(async (requestId) => {
-        const request = pendingPgs.find((req) => req.id === requestId);
-        if (!request) return false;
-
-        const updatedPending = pendingPgs.filter((req) => req.id !== requestId);
-        await persistAndSet(StorageService.savePendingPgs.bind(StorageService), setPendingPgs, updatedPending);
-
-        const { businessName, address, rent, adminId, phone } = request;
-        await addPg({
-            name: businessName,
-            address,
-            rent: parseFloat(rent),
-            adminId,
-            phone,
-            location: { latitude: 18.5204, longitude: 73.8567 },
-            totalRooms: 10,
-            occupiedRooms: 0,
-            totalBeds: 20,
-            vacantBeds: 20,
-            facilities: ['WiFi', 'Drinking Water'],
-            safetyMeasures: ['CCTV'],
-            gender: 'Any',
-            images: [],
-            rating: 0,
-            reviews: 0,
-        });
-        return true;
-    }, [pendingPgs, addPg, persistAndSet]);
+        return updatePg(requestId, { status: 'approved' });
+    }, [updatePg]);
 
     const rejectPendingPg = useCallback(async (requestId) => {
-        return persistAndSet(
-            StorageService.savePendingPgs.bind(StorageService),
-            setPendingPgs,
-            pendingPgs.filter((req) => req.id !== requestId),
-        );
-    }, [pendingPgs, persistAndSet]);
+        return updatePg(requestId, { status: 'rejected' });
+    }, [updatePg]);
 
     const toggleUserStatus = useCallback(async (userId) => {
-        const updated = users.map((u) => (u.id === userId ? {
-            ...u,
-            status: u.status === 'suspended' ? 'active' : 'suspended',
-        } : u));
-        return persistAndSet(StorageService.saveUsers.bind(StorageService), setUsers, updated);
-    }, [users, persistAndSet]);
+        const updated = await ApiClient.put(`/auth/status/${userId}`, {}); 
+        if (updated) {
+            setUsers(prev => (prev || []).map(u => (u.id === userId || u._id === userId ? updated : u)));
+            return true;
+        }
+        return false;
+    }, []);
+
+    const approveAdmin = useCallback(async (userId) => {
+        const updated = await ApiClient.put(`/auth/approve-admin/${userId}`, {});
+        if (updated) {
+            setUsers(prev => (prev || []).map(u => (u.id === userId || u._id === userId ? updated : u)));
+            return true;
+        }
+        return false;
+    }, []);
+
+    const rejectAdmin = useCallback(async (userId) => {
+        setUsers(prev => (prev || []).filter(u => u.id !== userId && u._id !== userId));
+        return true;
+    }, []);
 
     const addDispute = useCallback(async (userId, pgId, title, description) => {
-        const newDispute = {
-            id: generateId('dispute'),
-            userId,
-            pgId,
-            title,
-            description,
-            status: 'Open',
-            date: new Date().toISOString(),
-        };
-        return persistAndSet(StorageService.saveDisputes.bind(StorageService), setDisputes, [newDispute, ...disputes]);
-    }, [disputes, persistAndSet]);
+        const dispute = await ApiClient.post('/disputes', { pgId, title, description });
+        if (dispute) {
+            setDisputes(prev => [dispute, ...(prev || [])]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const updateDisputeStatus = useCallback(async (disputeId, newStatus) => {
-        return persistAndSet(
-            StorageService.saveDisputes.bind(StorageService),
-            setDisputes,
-            disputes.map((d) => (d.id === disputeId ? { ...d, status: newStatus } : d)),
-        );
-    }, [disputes, persistAndSet]);
+        const updated = await ApiClient.put(`/disputes/${disputeId}`, { status: newStatus });
+        if (updated) {
+            setDisputes(prev => (prev || []).map(d => (d.id === disputeId || d._id === disputeId ? updated : d)));
+            return true;
+        }
+        return false;
+    }, []);
 
     const updateSettings = useCallback(async (newSettings) => {
-        const merged = { ...settings, ...newSettings };
-        return persistAndSet(StorageService.saveSettings.bind(StorageService), setSettings, merged);
-    }, [settings, persistAndSet]);
+        const updated = await ApiClient.put('/settings', newSettings);
+        if (updated) {
+            setSettings(updated);
+            return true;
+        }
+        return false;
+    }, []);
 
     const addPayment = useCallback(async (paymentData) => {
-        const newPayment = {
-            id: generateId('payment'),
-            ...paymentData,
-            date: new Date().toISOString(),
-        };
-        return persistAndSet(StorageService.savePayments.bind(StorageService), setPayments, [newPayment, ...payments]);
-    }, [payments, persistAndSet]);
+        const newPayment = await ApiClient.post('/payments', paymentData);
+        if (newPayment) {
+            setPayments(prev => [newPayment, ...(prev || [])]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const getMessMenuForPg = useCallback((pgId) => {
-        return messMenus.find((m) => m.pgId === pgId) || null;
+        return (messMenus || []).find((m) => m.pgId === pgId) || null;
     }, [messMenus]);
 
     const updateMessMenu = useCallback(async (pgId, menuData) => {
-        const existing = messMenus.find((m) => m.pgId === pgId);
-        const updated = existing
-            ? messMenus.map((m) => (m.pgId === pgId ? { ...m, ...menuData } : m))
-            : [...messMenus, { pgId, ...menuData }];
-        return persistAndSet(StorageService.saveMessMenus.bind(StorageService), setMessMenus, updated);
-    }, [messMenus, persistAndSet]);
+        const updated = await ApiClient.put('/mess', { pgId, menu: menuData });
+        if (updated) {
+            setMessMenus(prev => {
+                const existing = (prev || []).find(m => m.pgId === pgId);
+                return existing ? (prev || []).map(m => (m.pgId === pgId ? updated : m)) : [...(prev || []), updated];
+            });
+            return true;
+        }
+        return false;
+    }, []);
 
     const addLeaveRequest = useCallback(async ({ userId, pgId, bookingId }) => {
-        const newRequest = {
-            id: generateId('leave_req'),
-            userId,
-            pgId,
-            bookingId,
-            status: 'pending',
-            createdAt: new Date().toISOString(),
-        };
-        return persistAndSet(
-            StorageService.saveLeaveRequests.bind(StorageService),
-            setLeaveRequests,
-            [newRequest, ...leaveRequests],
-        );
-    }, [leaveRequests, persistAndSet]);
+        const leave = await ApiClient.post('/leaves', { pgId, bookingId });
+        if (leave) {
+            setLeaveRequests(prev => [...(prev || []), leave]);
+            return true;
+        }
+        return false;
+    }, []);
 
     const updateLeaveRequestStatus = useCallback(async (requestId, status) => {
-        return persistAndSet(
-            StorageService.saveLeaveRequests.bind(StorageService),
-            setLeaveRequests,
-            leaveRequests.map((r) => (r.id === requestId ? { ...r, status } : r)),
-        );
-    }, [leaveRequests, persistAndSet]);
+        const updated = await ApiClient.put(`/leaves/${requestId}`, { status });
+        if (updated) {
+            setLeaveRequests(prev => (prev || []).map(r => (r.id === requestId || r._id === requestId ? updated : r)));
+            return true;
+        }
+        return false;
+    }, []);
 
     const approveLeaveRequest = useCallback(async (requestId) => {
-        const req = leaveRequests.find((r) => r.id === requestId);
-        if (!req) return false;
-        const bookingSuccess = await updateBooking(req.bookingId, { status: 'Completed' });
-        if (!bookingSuccess) return false;
         return updateLeaveRequestStatus(requestId, 'approved');
-    }, [leaveRequests, updateBooking, updateLeaveRequestStatus]);
+    }, [updateLeaveRequestStatus]);
 
     const rejectLeaveRequest = useCallback(async (requestId) => {
         return updateLeaveRequestStatus(requestId, 'rejected');
     }, [updateLeaveRequestStatus]);
 
     const contextValue = useMemo(() => ({
-        pgs,
-        bookings,
-        reviews,
-        communityPosts,
-        pendingPgs,
-        users,
-        disputes,
-        settings,
-        payments,
-        messMenus,
-        leaveRequests,
-        isLoading,
-        favoritesByUser,
-        getFavoritesForUser,
-        addPg,
-        updatePg,
-        deletePg,
-        addBooking,
-        updateBooking,
-        clearBookings,
-        toggleFavorite,
-        addReview,
-        addCommunityPost,
-        updateCommunityPost,
-        deleteCommunityPost,
-        addPendingPg,
-        approvePendingPg,
-        rejectPendingPg,
-        toggleUserStatus,
-        addDispute,
-        updateDisputeStatus,
-        updateSettings,
-        addPayment,
-        getMessMenuForPg,
-        updateMessMenu,
-        addLeaveRequest,
-        approveLeaveRequest,
-        rejectLeaveRequest,
+        pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
+        settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
+        getFavoritesForUser, addPg, updatePg, deletePg, addBooking, updateBooking,
+        clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
+        deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
+        toggleUserStatus, approveAdmin, rejectAdmin, addDispute, updateDisputeStatus, updateSettings,
+        addPayment, getMessMenuForPg, updateMessMenu,
+        addLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
+        loadAllData,
     }), [
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
         settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
         getFavoritesForUser, addPg, updatePg, deletePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
-        toggleUserStatus, addDispute, updateDisputeStatus, updateSettings,
+        toggleUserStatus, approveAdmin, rejectAdmin, addDispute, updateDisputeStatus, updateSettings,
         addPayment, getMessMenuForPg, updateMessMenu,
-        addLeaveRequest, approveLeaveRequest, rejectLeaveRequest,
+        addLeaveRequest, approveLeaveRequest, rejectLeaveRequest, loadAllData
     ]);
 
     return <DataContext.Provider value={contextValue}>{children}</DataContext.Provider>;
