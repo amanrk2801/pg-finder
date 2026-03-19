@@ -19,7 +19,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2196F3"
       },
-      "package": "com.pgfinder.app"
+      "package": "com.pgfinder.app",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

@@ -7,20 +7,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth, useData } from '../hooks';
 import { ROUTES } from '../navigation/routes';
-import StorageService from '../services/StorageService';
 import { AUTH_CONFIG } from '../constants/auth';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPOGRAPHY } from '../constants/theme';
 import { CustomInput, CustomButton } from '../components/common';
 
 const { height } = Dimensions.get('window');
-const USE_BACKEND = process.env.EXPO_PUBLIC_USE_BACKEND === 'true';
 
 export default function LoginScreen({ navigation }) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [selectedType, setSelectedType] = useState('user');
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
     const { login } = useAuth();
-    const { pgs, pendingPgs, addPendingPg } = useData();
+    const { pgs, addPendingPg } = useData();
 
     const [showPgForm, setShowPgForm] = useState(false);
     const [businessName, setBusinessName] = useState('');
@@ -49,63 +48,42 @@ export default function LoginScreen({ navigation }) {
         }
 
         Keyboard.dismiss();
+        setIsLoggingIn(true);
 
-        const isConfiguredSuperAdmin = AUTH_CONFIG.isSuperAdminEnabled
-            && normalizedEmail === AUTH_CONFIG.superAdminEmail?.toLowerCase()
-            && password === AUTH_CONFIG.superAdminPassword;
+        try {
+            // AUTH_CONFIG check for local superadmin bypass
+            const isConfiguredSuperAdmin = AUTH_CONFIG.isSuperAdminEnabled
+                && normalizedEmail === AUTH_CONFIG.superAdminEmail?.toLowerCase()
+                && password === AUTH_CONFIG.superAdminPassword;
 
-        if (selectedType === 'admin' && isConfiguredSuperAdmin) {
-            const success = await login(normalizedEmail, password, 'superadmin');
-            if (success) navigation.replace(ROUTES.SUPER_ADMIN.DASHBOARD);
-            return;
-        }
-
-        if (USE_BACKEND) {
-            const success = await login(normalizedEmail, password, selectedType);
+            // We attempt login. The AuthContext now prioritizes the role returned by the backend.
+            const success = await login(normalizedEmail, password, isConfiguredSuperAdmin ? 'superadmin' : selectedType);
+            
             if (!success) {
-                Alert.alert('Login failed', 'Invalid credentials or role.');
+                Alert.alert('Login failed', 'Invalid credentials or role mismatch.');
+            } else {
+                // If it's a superadmin, they are already routed by Navigator.
+                // If they are an approved admin but don't have a PG yet, we show the PG form.
+                const currentSession = await login.user; // Note: useAuth provides user/userType directly
             }
-            return;
+        } catch (err) {
+            Alert.alert('Login Error', err.message || 'Something went wrong');
+        } finally {
+            setIsLoggingIn(false);
         }
+    }, [email, password, selectedType, login]);
 
-        if (selectedType === 'admin') {
-            const existingUsers = await StorageService.getUsers() || [];
-            const existingUser = existingUsers.find((item) => item.email === normalizedEmail);
-            if (existingUser && existingUser.type !== 'admin') {
-                Alert.alert('Access denied', 'This email is already registered as a user account.');
-                return;
-            }
-
-            const success = await login(normalizedEmail, password, 'admin');
-            if (!success) {
-                Alert.alert('Login failed', 'Unable to sign in as admin with this account.');
-                return;
-            }
-
-            const session = await StorageService.getUserSession();
-            const userId = session?.userData?.id;
-
-            const existingPg = pgs.find((p) => p.adminId === userId);
-            const existingPending = pendingPgs.find((p) => p.adminId === userId);
-
-            if (!existingPg && !existingPending) {
-                setAuthData({ email: normalizedEmail, userId });
+    // Add useEffect to handle post-login PG form trigger for Admins
+    const { user, userType } = useAuth();
+    React.useEffect(() => {
+        if (userType === 'admin' && user) {
+            const hasPg = pgs.some(p => p.adminId === user.id);
+            if (!hasPg && !showPgForm) {
+                setAuthData({ email: user.email, userId: user.id });
                 setShowPgForm(true);
             }
-        } else {
-            const existingUsers = await StorageService.getUsers() || [];
-            const existingUser = existingUsers.find((item) => item.email === normalizedEmail);
-            if (existingUser && existingUser.type !== 'user') {
-                Alert.alert('Access denied', 'This email is already registered as an admin account.');
-                return;
-            }
-
-            const success = await login(normalizedEmail, password, 'user');
-            if (!success) {
-                Alert.alert('Login failed', 'Unable to sign in as user with this account.');
-            }
         }
-    }, [email, password, selectedType, login, navigation, pgs, pendingPgs]);
+    }, [user, userType, pgs, showPgForm]);
 
     const handleSubmitPgRequest = async () => {
         if (!businessName || !address || !rent || !phone) {
@@ -134,6 +112,7 @@ export default function LoginScreen({ navigation }) {
 
         if (success) {
             setShowPgForm(false);
+            Alert.alert('Application Submitted', 'Your PG details have been sent for verification.');
         }
     };
 
@@ -199,6 +178,7 @@ export default function LoginScreen({ navigation }) {
                         onSubmitEditing={() => passwordInputRef.current?.focus()}
                     />
                     <CustomInput
+                        ref={passwordInputRef}
                         label="Password" placeholder="Enter your password"
                         value={password} onChangeText={setPassword} icon="lock-closed-outline"
                         secureTextEntry returnKeyType="done" onSubmitEditing={handleLogin}
@@ -206,6 +186,8 @@ export default function LoginScreen({ navigation }) {
                     <CustomButton
                         title={selectedType === 'admin' ? 'Continue as Admin' : 'Sign In'}
                         onPress={handleLogin}
+                        loading={isLoggingIn}
+                        disabled={isLoggingIn}
                         style={{ marginTop: 6, marginBottom: SPACING.md }}
                     />
                     <TouchableOpacity

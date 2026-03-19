@@ -14,7 +14,7 @@ const ImagePickerSection = ({ images, onImagesChange }) => {
         }
 
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsMultipleSelection: true,
             selectionLimit: MAX_IMAGES,
             quality: 0.7,

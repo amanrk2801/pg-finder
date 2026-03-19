@@ -1,28 +1,28 @@
 const jwt = require('jsonwebtoken');
 
-function auth(requiredRoles = []) {
-  return (req, res, next) => {
-    try {
-      const header = req.headers.authorization || '';
-      const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+const auth = (roles = [], isOptional = false) => (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
 
-      if (!token) {
-        return res.status(401).json({ message: 'Authentication required' });
-      }
+  if (!token) {
+    if (isOptional) return next();
+    return res.status(401).json({ message: 'Authentication required' });
+  }
 
-      const payload = jwt.verify(token, process.env.JWT_SECRET || 'change-me-in-production');
-      req.user = payload;
+  try {
+    const secret = process.env.JWT_SECRET || 'change-me-in-production';
+    const decoded = jwt.verify(token, secret);
+    req.user = decoded;
 
-      if (requiredRoles.length && !requiredRoles.includes(payload.type)) {
-        return res.status(403).json({ message: 'Forbidden: insufficient permissions' });
-      }
-
-      return next();
-    } catch (err) {
-      return res.status(401).json({ message: 'Invalid or expired token' });
+    if (roles.length && !roles.includes(decoded.type)) {
+      return res.status(403).json({ message: 'Access denied: insufficient permissions' });
     }
-  };
-}
+
+    next();
+  } catch (err) {
+    if (isOptional) return next();
+    res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
 
 module.exports = auth;
-

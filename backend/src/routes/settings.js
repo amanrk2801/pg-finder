@@ -4,7 +4,28 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get settings (public/read-only)
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Settings:
+ *       type: object
+ *       properties:
+ *         platformFee:
+ *           type: number
+ *           description: Global platform fee percentage
+ */
+
+/**
+ * @swagger
+ * /settings:
+ *   get:
+ *     summary: Get platform settings
+ *     tags: [Settings]
+ *     responses:
+ *       200:
+ *         description: Settings object
+ */
 router.get('/', async (req, res, next) => {
   try {
     let settings = await Settings.findOne();
@@ -17,7 +38,24 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Superadmin: update settings
+/**
+ * @swagger
+ * /settings:
+ *   put:
+ *     summary: Update platform settings (Superadmin only)
+ *     tags: [Settings]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Settings'
+ *     responses:
+ *       200:
+ *         description: Updated
+ */
 router.put('/', auth(['superadmin']), async (req, res, next) => {
   try {
     const { platformFee } = req.body;
@@ -35,4 +73,3 @@ router.put('/', auth(['superadmin']), async (req, res, next) => {
 });
 
 module.exports = router;
-

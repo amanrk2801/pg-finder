@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     type: {
       type: String,
-      enum: ['user', 'admin', 'superadmin'],
+      enum: ['user', 'admin', 'pending_admin', 'superadmin'],
       required: true,
     },
     name: { type: String },

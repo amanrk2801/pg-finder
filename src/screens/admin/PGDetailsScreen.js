@@ -10,8 +10,24 @@ import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPO
 const { width } = Dimensions.get('window');
 
 export default function PGDetailsScreen({ route, navigation }) {
-    const { pg } = route.params;
-    const { deletePg } = useData();
+    const { pg: initialPg } = route.params || {};
+    const { pgs, pendingPgs, deletePg } = useData();
+
+    // GET THE LATEST DATA FROM CONTEXT INSTEAD OF JUST NAV PARAMS
+    const pg = [...(pgs || []), ...(pendingPgs || [])].find(
+        p => (p.id === initialPg?.id || p._id === initialPg?._id)
+    ) || initialPg;
+
+    if (!pg) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{ color: COLORS.gray }}>Property details not found.</Text>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
+                    <Text style={{ color: COLORS.primary }}>Go Back</Text>
+                </TouchableOpacity>
+            </View>
+        );
+    }
 
     const handleDelete = () => {
         Alert.alert(
@@ -21,13 +37,13 @@ export default function PGDetailsScreen({ route, navigation }) {
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Delete', style: 'destructive',
-                    onPress: async () => { await deletePg(pg.id); navigation.goBack(); },
+                    onPress: async () => { await deletePg(pg.id || pg._id); navigation.goBack(); },
                 },
             ],
         );
     };
 
-    const images = pg.images?.length > 0 ? pg.images : [];
+    const images = (pg && pg.images && pg.images.length > 0) ? pg.images : [];
 
     return (
         <View style={styles.container}>
@@ -49,36 +65,36 @@ export default function PGDetailsScreen({ route, navigation }) {
 
                 <View style={styles.content}>
                     <View style={styles.headerRow}>
-                        <Text style={styles.pgName} numberOfLines={2}>{pg.name}</Text>
+                        <Text style={styles.pgName} numberOfLines={2}>{pg.name || 'Property Name'}</Text>
                         <View style={styles.genderBadge}>
-                            <Text style={styles.genderText}>{pg.gender}</Text>
+                            <Text style={styles.genderText}>{pg.gender || 'Any'}</Text>
                         </View>
                     </View>
 
-                    <Text style={styles.pgAddress}>📍 {pg.address}</Text>
+                    <Text style={styles.pgAddress}>📍 {pg.address || 'Address not available'}</Text>
 
                     <View style={styles.statsGrid}>
                         {[
                             { label: 'Total Rooms', value: pg.totalRooms, color: COLORS.black },
-                            { label: 'Available', value: pg.totalRooms - pg.occupiedRooms, color: COLORS.secondary },
+                            { label: 'Available', value: (pg.totalRooms || 0) - (pg.occupiedRooms || 0), color: COLORS.secondary },
                             { label: 'Vacant Beds', value: pg.vacantBeds, color: COLORS.primary },
                         ].map(({ label, value, color }) => (
                             <View key={label} style={styles.statBox}>
                                 <Text style={styles.statLabel}>{label}</Text>
-                                <Text style={[styles.statValue, { color }]}>{value}</Text>
+                                <Text style={[styles.statValue, { color }]}>{value || 0}</Text>
                             </View>
                         ))}
                     </View>
 
                     <View style={styles.priceContainer}>
                         <Text style={styles.priceLabel}>Monthly Rent</Text>
-                        <Text style={styles.priceAmount}>₹{pg.rent.toLocaleString()}</Text>
+                        <Text style={styles.priceAmount}>₹{(pg.rent || 0).toLocaleString()}</Text>
                     </View>
 
                     <Text style={styles.sectionTitle}>Facilities</Text>
                     <View style={styles.pillContainer}>
-                        {pg.facilities.map((facility, index) => (
-                            <View key={index} style={styles.pill}>
+                        {(pg.facilities || []).map((facility, index) => (
+                            <View key={`facility-${index}`} style={styles.pill}>
                                 <Text style={styles.pillText}>✓ {facility}</Text>
                             </View>
                         ))}
@@ -86,8 +102,8 @@ export default function PGDetailsScreen({ route, navigation }) {
 
                     <Text style={styles.sectionTitle}>Safety Measures</Text>
                     <View style={styles.pillContainer}>
-                        {pg.safetyMeasures.map((measure, index) => (
-                            <View key={index} style={[styles.pill, { backgroundColor: COLORS.backgroundPink }]}>
+                        {(pg.safetyMeasures || []).map((measure, index) => (
+                            <View key={`safety-${index}`} style={[styles.pill, { backgroundColor: COLORS.backgroundPink }]}>
                                 <Text style={[styles.pillText, { color: COLORS.primary }]}>🛡️ {measure}</Text>
                             </View>
                         ))}

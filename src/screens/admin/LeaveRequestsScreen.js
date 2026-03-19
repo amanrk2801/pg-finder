@@ -8,28 +8,29 @@ export default function LeaveRequestsScreen() {
   const { user } = useAuth();
   const { pgs, leaveRequests, users, bookings, approveLeaveRequest, rejectLeaveRequest } = useData();
 
-  const myPgs = (pgs || []).filter((pg) => pg.adminId === user?.id);
-  const myPgIds = new Set(myPgs.map((pg) => pg.id));
+  const myPgs = (pgs || []).filter((pg) => pg && pg.adminId === user?.id);
+  const myPgIds = new Set(myPgs.map((pg) => pg.id || pg._id));
+  
   const pendingLeaveRequests = (leaveRequests || []).filter(
-    (r) => myPgIds.has(r.pgId) && r.status === 'pending',
+    (r) => r && r.pgId && myPgIds.has(r.pgId) && r.status === 'pending',
   );
 
   const findUserDisplayName = (userId) => {
-    const u = (users || []).find((usr) => usr.id === userId);
-    if (!u) return userId;
+    const u = (users || []).find((usr) => (usr.id === userId || usr._id === userId));
+    if (!u) return userId || 'Unknown User';
     return u.name || u.email || userId;
   };
 
   const buildPgMetaLabel = (pgId, bookingId) => {
-    const pg = (pgs || []).find((item) => item.id === pgId);
-    const booking = (bookings || []).find((b) => b.id === bookingId);
+    const pg = (pgs || []).find((item) => (item.id === pgId || item._id === pgId));
+    const booking = (bookings || []).find((b) => (b.id === bookingId || b._id === bookingId));
     const parts = [];
     if (pg?.name) parts.push(pg.name);
     const room = booking?.roomNumber;
     const bed = booking?.bedNumber;
     if (room) parts.push(`Room ${room}`);
     if (bed) parts.push(`Bed ${bed}`);
-    return parts.join(' · ') || pgId;
+    return parts.join(' · ') || pgId || 'Property Info';
   };
 
   return (
@@ -49,19 +50,19 @@ export default function LeaveRequestsScreen() {
           </View>
         ) : (
           pendingLeaveRequests.map((req) => (
-            <View key={req.id} style={styles.card}>
+            <View key={req.id || req._id} style={styles.card}>
               <Text style={styles.userName}>{findUserDisplayName(req.userId)}</Text>
               <Text style={styles.pgMeta}>{buildPgMetaLabel(req.pgId, req.bookingId)}</Text>
               <View style={styles.actionsRow}>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.approveBtn]}
-                  onPress={() => approveLeaveRequest(req.id)}
+                  onPress={() => approveLeaveRequest(req.id || req._id)}
                 >
                   <Text style={styles.approveText}>Approve</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionBtn, styles.rejectBtn]}
-                  onPress={() => rejectLeaveRequest(req.id)}
+                  onPress={() => rejectLeaveRequest(req.id || req._id)}
                 >
                   <Text style={styles.rejectText}>Reject</Text>
                 </TouchableOpacity>
@@ -147,4 +148,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

@@ -8,26 +8,26 @@ export default function AdminBookingsScreen() {
   const { user } = useAuth();
   const { pgs, bookings, users } = useData();
 
-  const myPgs = (pgs || []).filter((pg) => pg.adminId === user?.id);
-  const myPgIds = new Set(myPgs.map((pg) => pg.id));
+  const myPgs = (pgs || []).filter((pg) => pg && pg.adminId === user?.id);
+  const myPgIds = new Set(myPgs.map((pg) => pg.id || pg._id));
 
-  const myBookings = (bookings || []).filter((b) => myPgIds.has(b.pgId));
+  const myBookings = (bookings || []).filter((b) => b && b.pgId && myPgIds.has(b.pgId));
 
   const findUserDisplayName = (userId) => {
-    const u = (users || []).find((usr) => usr.id === userId);
-    if (!u) return userId;
+    const u = (users || []).find((usr) => usr && (usr.id === userId || usr._id === userId));
+    if (!u) return userId || 'User';
     return u.name || u.email || userId;
   };
 
   const buildPgMetaLabel = (pgId, booking) => {
-    const pg = (pgs || []).find((item) => item.id === pgId);
+    const pg = (pgs || []).find((item) => item && (item.id === pgId || item._id === pgId));
     const parts = [];
     if (pg?.name) parts.push(pg.name);
     const room = booking?.roomNumber;
     const bed = booking?.bedNumber;
     if (room) parts.push(`Room ${room}`);
     if (bed) parts.push(`Bed ${bed}`);
-    return parts.join(' · ') || pgId;
+    return parts.join(' · ') || pgId || 'Property Info';
   };
 
   return (
@@ -40,27 +40,29 @@ export default function AdminBookingsScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {myBookings.length === 0 ? (
+        {(myBookings || []).length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyTitle}>No bookings yet</Text>
             <Text style={styles.emptyText}>When users book your PGs, they will appear here.</Text>
           </View>
         ) : (
-          myBookings.map((booking) => (
-            <View key={booking.id} style={styles.card}>
+          (myBookings || []).map((booking) => (
+            <View key={booking.id || booking._id || Math.random().toString()} style={styles.card}>
               <Text style={styles.userName}>{findUserDisplayName(booking.userId)}</Text>
               <Text style={styles.pgMeta}>{buildPgMetaLabel(booking.pgId, booking)}</Text>
               <Text style={styles.bookingMeta}>
                 Status: {booking.status} · Monthly Rent: ₹{(booking.monthlyRent || 0).toLocaleString()}
               </Text>
-              <Text style={styles.bookingMeta}>
-                Booked on{' '}
-                {new Date(booking.date).toLocaleDateString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
-              </Text>
+              {booking.date && (
+                <Text style={styles.bookingMeta}>
+                    Booked on{' '}
+                    {new Date(booking.date).toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    })}
+                </Text>
+              )}
             </View>
           ))
         )}
@@ -120,4 +122,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

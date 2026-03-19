@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useData } from '../../hooks';
-import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants/theme';
 import { ScreenHeader } from '../../components/common';
 
 const DAYS_ORDER = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
@@ -24,9 +24,9 @@ export default function ManageMenuScreen({ route, navigation }) {
     const { user } = useAuth();
     const { pgs, getMessMenuForPg, updateMessMenu } = useData();
 
-    const myPgs = (pgs || []).filter((pg) => pg.adminId === user?.id);
+    const myPgs = (pgs || []).filter((pg) => pg && pg.adminId === user?.id);
 
-    const [selectedPgId, setSelectedPgId] = useState(initialPgId || myPgs[0]?.id || null);
+    const [selectedPgId, setSelectedPgId] = useState(initialPgId || myPgs[0]?.id || myPgs[0]?._id || null);
     const [weeklyMenu, setWeeklyMenu] = useState(buildEmptyWeek());
     const [todaysSpecial, setTodaysSpecial] = useState('');
     const [mealPlanPrice, setMealPlanPrice] = useState('');
@@ -48,7 +48,7 @@ export default function ManageMenuScreen({ route, navigation }) {
     const updateMeal = (meal, value) => {
         setWeeklyMenu(prev => ({
             ...prev,
-            [dayName]: { ...prev[dayName], [meal]: value },
+            [dayName]: { ...(prev[dayName] || {}), [meal]: value },
         }));
     };
 
@@ -83,10 +83,9 @@ export default function ManageMenuScreen({ route, navigation }) {
             <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 
-                    {/* PG Selector */}
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Select PG</Text>
-                        {myPgs.length === 0 ? (
+                        {(myPgs || []).length === 0 ? (
                             <Text style={styles.noPgText}>
                                 You do not have any PGs yet. Please add a property first.
                             </Text>
@@ -96,13 +95,13 @@ export default function ManageMenuScreen({ route, navigation }) {
                                 showsHorizontalScrollIndicator={false}
                                 contentContainerStyle={styles.pgChipsRow}
                             >
-                                {myPgs.map((pg) => {
-                                    const isActive = pg.id === selectedPgId;
+                                {(myPgs || []).map((pg) => {
+                                    const isActive = (pg.id === selectedPgId || pg._id === selectedPgId);
                                     return (
                                         <TouchableOpacity
-                                            key={pg.id}
+                                            key={pg.id || pg._id}
                                             style={[styles.pgChip, isActive && styles.pgChipActive]}
-                                            onPress={() => setSelectedPgId(pg.id)}
+                                            onPress={() => setSelectedPgId(pg.id || pg._id)}
                                             activeOpacity={0.8}
                                         >
                                             <Text
@@ -120,7 +119,6 @@ export default function ManageMenuScreen({ route, navigation }) {
                         )}
                     </View>
 
-                    {/* General Settings */}
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>General Settings</Text>
 
@@ -155,9 +153,8 @@ export default function ManageMenuScreen({ route, navigation }) {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Day Tabs */}
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.dayTabs}>
-                        {DAYS_ORDER.map((day, idx) => (
+                        {(DAYS_ORDER || []).map((day, idx) => (
                             <TouchableOpacity
                                 key={day}
                                 style={[styles.dayTab, idx === selectedDay && styles.dayTabActive]}
@@ -171,12 +168,11 @@ export default function ManageMenuScreen({ route, navigation }) {
                         ))}
                     </ScrollView>
 
-                    {/* Meal Inputs */}
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>
-                            {dayName.charAt(0).toUpperCase() + dayName.slice(1)}
+                            {(dayName || '').charAt(0).toUpperCase() + (dayName || '').slice(1)}
                         </Text>
-                        {MEALS.map(meal => (
+                        {(MEALS || []).map(meal => (
                             <View key={meal}>
                                 <Text style={styles.label}>
                                     {meal.charAt(0).toUpperCase() + meal.slice(1)}
@@ -193,7 +189,6 @@ export default function ManageMenuScreen({ route, navigation }) {
                         ))}
                     </View>
 
-                    {/* Copy Day Helper */}
                     <TouchableOpacity
                         style={styles.copyButton}
                         activeOpacity={0.8}
@@ -201,7 +196,7 @@ export default function ManageMenuScreen({ route, navigation }) {
                             const nextIdx = (selectedDay + 1) % 7;
                             setWeeklyMenu(prev => ({
                                 ...prev,
-                                [DAYS_ORDER[nextIdx]]: { ...prev[dayName] },
+                                [DAYS_ORDER[nextIdx]]: { ...(prev[dayName] || {}) },
                             }));
                             setSelectedDay(nextIdx);
                             Alert.alert('Copied', `${DAY_LABELS[dayName]}'s menu copied to ${DAY_LABELS[DAYS_ORDER[nextIdx]]}`);
@@ -215,7 +210,6 @@ export default function ManageMenuScreen({ route, navigation }) {
                 </ScrollView>
             </KeyboardAvoidingView>
 
-            {/* Save Button */}
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={[styles.saveButton, saving && { opacity: 0.6 }]}
@@ -233,81 +227,29 @@ export default function ManageMenuScreen({ route, navigation }) {
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: COLORS.white },
     content: { flex: 1, backgroundColor: COLORS.backgroundGray },
-
-    card: {
-        backgroundColor: COLORS.white, margin: SPACING.lg, borderRadius: BORDER_RADIUS.xl,
-        padding: SPACING.xl, ...SHADOWS.small,
-    },
+    card: { backgroundColor: COLORS.white, margin: SPACING.lg, borderRadius: BORDER_RADIUS.xl, padding: SPACING.xl, ...SHADOWS.small },
     cardTitle: { fontSize: FONT_SIZES.xl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black, marginBottom: SPACING.lg },
-    noPgText: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.gray,
-    },
-    pgChipsRow: {
-        flexDirection: 'row',
-        gap: SPACING.sm,
-    },
-    pgChip: {
-        paddingHorizontal: SPACING.lg,
-        paddingVertical: SPACING.sm,
-        borderRadius: BORDER_RADIUS.lg,
-        backgroundColor: COLORS.backgroundGray,
-    },
-    pgChipActive: {
-        backgroundColor: COLORS.primary,
-    },
-    pgChipText: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.gray,
-        fontWeight: FONT_WEIGHTS.medium,
-    },
-    pgChipTextActive: {
-        color: COLORS.white,
-    },
-
-    label: {
-        fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.gray,
-        marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.3,
-    },
-    input: {
-        backgroundColor: COLORS.backgroundGray, borderRadius: BORDER_RADIUS.md, padding: SPACING.md,
-        fontSize: FONT_SIZES.md, color: COLORS.black, marginBottom: SPACING.lg,
-        borderWidth: 1, borderColor: COLORS.border,
-    },
+    noPgText: { fontSize: FONT_SIZES.sm, color: COLORS.gray },
+    pgChipsRow: { flexDirection: 'row', gap: SPACING.sm },
+    pgChip: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.backgroundGray },
+    pgChipActive: { backgroundColor: COLORS.primary },
+    pgChipText: { fontSize: FONT_SIZES.sm, color: COLORS.gray, fontWeight: FONT_WEIGHTS.medium },
+    pgChipTextActive: { color: COLORS.white },
+    label: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.gray, marginBottom: SPACING.xs, textTransform: 'uppercase', letterSpacing: 0.3 },
+    input: { backgroundColor: COLORS.backgroundGray, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, fontSize: FONT_SIZES.md, color: COLORS.black, marginBottom: SPACING.lg, borderWidth: 1, borderColor: COLORS.border },
     mealInput: { minHeight: 50 },
-
     vegToggle: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-    checkbox: {
-        width: 24, height: 24, borderRadius: BORDER_RADIUS.sm, borderWidth: 2,
-        borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center',
-    },
+    checkbox: { width: 24, height: 24, borderRadius: BORDER_RADIUS.sm, borderWidth: 2, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center' },
     checkboxActive: { backgroundColor: '#4CAF50', borderColor: '#4CAF50' },
     vegLabel: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.medium, color: COLORS.black },
-
     dayTabs: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, gap: SPACING.sm },
-    dayTab: {
-        paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.lg,
-        backgroundColor: COLORS.white, ...SHADOWS.small,
-    },
+    dayTab: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.white, ...SHADOWS.small },
     dayTabActive: { backgroundColor: COLORS.primary },
     dayTabText: { fontSize: FONT_SIZES.md, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.gray },
     dayTabTextActive: { color: COLORS.white },
-
-    copyButton: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm,
-        marginHorizontal: SPACING.lg, paddingVertical: SPACING.md,
-        backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg,
-        borderWidth: 1, borderColor: COLORS.primary, ...SHADOWS.small,
-    },
+    copyButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, marginHorizontal: SPACING.lg, paddingVertical: SPACING.md, backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg, borderWidth: 1, borderColor: COLORS.primary, ...SHADOWS.small },
     copyText: { fontSize: FONT_SIZES.md, color: COLORS.primary, fontWeight: FONT_WEIGHTS.bold },
-
-    footer: {
-        padding: SPACING.lg, backgroundColor: COLORS.white,
-        borderTopWidth: 1, borderTopColor: COLORS.borderLight,
-    },
-    saveButton: {
-        backgroundColor: COLORS.primary, paddingVertical: SPACING.lg,
-        borderRadius: BORDER_RADIUS.lg, alignItems: 'center', ...SHADOWS.primary,
-    },
+    footer: { padding: SPACING.lg, backgroundColor: COLORS.white, borderTopWidth: 1, borderTopColor: COLORS.borderLight },
+    saveButton: { backgroundColor: COLORS.primary, paddingVertical: SPACING.lg, borderRadius: BORDER_RADIUS.lg, alignItems: 'center', ...SHADOWS.primary },
     saveButtonText: { color: COLORS.white, fontSize: FONT_SIZES.lg, fontWeight: FONT_WEIGHTS.bold },
 });

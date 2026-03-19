@@ -11,19 +11,32 @@ import {
 } from '../../utils/pgFormConfig';
 
 export default function EditPGScreen({ route, navigation }) {
-    const { pg } = route.params;
+    const { pg } = route.params || {};
     const { updatePg } = useData();
 
+    if (!pg) {
+        return (
+            <View style={styles.container}>
+                <Text>Property details not found.</Text>
+                <CustomButton title="Go Back" onPress={() => navigation.goBack()} />
+            </View>
+        );
+    }
+
     const [formData, setFormData] = useState({
-        name: pg.name, address: pg.address,
-        totalRooms: pg.totalRooms.toString(), occupiedRooms: pg.occupiedRooms.toString(),
-        totalBeds: pg.totalBeds.toString(), vacantBeds: pg.vacantBeds.toString(),
-        rent: pg.rent.toString(), gender: pg.gender,
+        name: pg.name || '', 
+        address: pg.address || '',
+        totalRooms: (pg.totalRooms || 0).toString(), 
+        occupiedRooms: (pg.occupiedRooms || 0).toString(),
+        totalBeds: (pg.totalBeds || 0).toString(), 
+        vacantBeds: (pg.vacantBeds || 0).toString(),
+        rent: (pg.rent || 0).toString(), 
+        gender: pg.gender || 'unisex',
     });
     const [errors, setErrors] = useState({});
     const [selectedImages, setSelectedImages] = useState(pg.images || []);
-    const [facilities, setFacilities] = useState(facilitiesArrayToMap(pg.facilities));
-    const [safetyMeasures, setSafetyMeasures] = useState(safetyArrayToMap(pg.safetyMeasures));
+    const [facilities, setFacilities] = useState(facilitiesArrayToMap(pg.facilities || []));
+    const [safetyMeasures, setSafetyMeasures] = useState(safetyArrayToMap(pg.safetyMeasures || []));
 
     const updateField = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -34,23 +47,29 @@ export default function EditPGScreen({ route, navigation }) {
         const { isValid, errors: newErrors } = validatePGForm(formData, { requireBeds: true });
         if (!isValid) { setErrors(newErrors); return; }
 
+        // Ensure we send numbers to the backend
         const updatedData = {
-            name: formData.name,
-            address: formData.address,
-            totalRooms: parseInt(formData.totalRooms),
-            occupiedRooms: parseInt(formData.occupiedRooms),
-            totalBeds: parseInt(formData.totalBeds),
-            vacantBeds: parseInt(formData.vacantBeds),
-            rent: parseInt(formData.rent),
-            gender: formData.gender,
+            name: formData.name.trim(),
+            address: formData.address.trim(),
+            totalRooms: parseInt(formData.totalRooms) || 0,
+            occupiedRooms: parseInt(formData.occupiedRooms) || 0,
+            totalBeds: parseInt(formData.totalBeds) || 0,
+            vacantBeds: parseInt(formData.vacantBeds) || 0,
+            rent: parseInt(formData.rent) || 0,
+            gender: formData.gender.toLowerCase(),
             facilities: facilitiesMapToArray(facilities),
             safetyMeasures: safetyMapToArray(safetyMeasures),
             images: selectedImages,
         };
 
-        await updatePg(pg.id, updatedData);
-        Alert.alert('Success', 'Property updated successfully!');
-        navigation.goBack();
+        const success = await updatePg(pg.id || pg._id, updatedData);
+        
+        if (success) {
+            Alert.alert('Success', 'Property updated successfully!');
+            navigation.goBack();
+        } else {
+            Alert.alert('Update Failed', 'Could not save changes to the server.');
+        }
     };
 
     return (

@@ -1,682 +1,377 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, StatusBar, ScrollView, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+    View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
+    StatusBar, ScrollView, TextInput, RefreshControl, Dimensions 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth, useData } from '../../hooks';
-import { ROUTES } from '../../navigation/routes';
+import ApiClient from '../../services/ApiClient';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants/theme';
 
-export default function SuperAdminDashboard({ navigation }) {
+const { width } = Dimensions.get('window');
+
+const TABS = [
+    { id: 'pending', label: 'PG Requests', icon: 'business' },
+    { id: 'admins', label: 'Owners', icon: 'person-add' },
+    { id: 'analytics', label: 'Analytics', icon: 'stats-chart' },
+    { id: 'users', label: 'Users', icon: 'people' },
+    { id: 'settings', label: 'Settings', icon: 'settings' }
+];
+
+export default function SuperAdminDashboard() {
     const {
         pendingPgs, approvePendingPg, rejectPendingPg,
-        pgs, bookings, users, communityPosts, disputes, settings,
-        toggleUserStatus, deleteCommunityPost, updateDisputeStatus, updateSettings
+        pgs, bookings, users, payments, settings,
+        toggleUserStatus, updateSettings,
+        approveAdmin, rejectAdmin, loadAllData
     } = useData();
     const { logout } = useAuth();
 
     const [activeTab, setActiveTab] = useState('pending');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+    const [pendingAdmins, setPendingAdmins] = useState([]);
     const [newFee, setNewFee] = useState(settings?.platformFee?.toString() || '5');
 
-    const TABS = [
-        { id: 'pending', label: 'Onboarding', icon: 'time-outline' },
-        { id: 'analytics', label: 'Analytics', icon: 'stats-chart-outline' },
-        { id: 'users', label: 'Users', icon: 'people-outline' },
-        { id: 'moderation', label: 'Posts', icon: 'shield-checkmark-outline' },
-        { id: 'disputes', label: 'Disputes', icon: 'warning-outline' },
-        { id: 'settings', label: 'Settings', icon: 'settings-outline' }
-    ];
-
-    const handleLogout = () => {
-        Alert.alert(
-            "Logout",
-            "Are you sure you want to log out?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Logout",
-                    onPress: () => {
-                        logout();
-                    },
-                    style: "destructive"
-                }
-            ]
-        );
-    };
-
-    const handleApprove = (id, businessName) => {
-        Alert.alert(
-            "Approve PG",
-            `Are you sure you want to approve ${businessName}? They will be able to list their property immediately.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Approve",
-                    onPress: async () => {
-                        const success = await approvePendingPg(id);
-                        if (success) Alert.alert("Success", "PG Owner Approved.");
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleReject = (id, businessName) => {
-        Alert.alert(
-            "Reject PG",
-            `Are you sure you want to reject ${businessName}? This application will be deleted.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Reject",
-                    style: "destructive",
-                    onPress: async () => {
-                        const success = await rejectPendingPg(id);
-                        if (success) Alert.alert("Rejected", "PG Application removed.");
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleSuspend = (id, email, currentStatus) => {
-        const isSuspending = currentStatus !== 'suspended';
-        Alert.alert(
-            isSuspending ? "Suspend User" : "Activate User",
-            `Are you sure you want to ${isSuspending ? 'suspend' : 'activate'} ${email}?`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: isSuspending ? "Suspend" : "Activate",
-                    style: isSuspending ? "destructive" : "default",
-                    onPress: async () => {
-                        const success = await toggleUserStatus(id);
-                        if (success) Alert.alert("Success", `User ${isSuspending ? 'suspended' : 'activated'}.`);
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleDeletePost = (id, title) => {
-        Alert.alert(
-            "Delete Post",
-            `Are you sure you want to forcefully delete "${title}"?`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        await deleteCommunityPost(id);
-                        Alert.alert("Deleted", "Post has been removed.");
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleResolveDispute = (id) => {
-        Alert.alert(
-            "Resolve Ticket",
-            "Mark this ticket as Resolved?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Resolve",
-                    style: "default",
-                    onPress: async () => {
-                        await updateDisputeStatus(id, 'Resolved');
-                        Alert.alert("Success", "Ticket marked as resolved.");
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleSaveSettings = async () => {
-        const feeNum = parseFloat(newFee);
-        if (isNaN(feeNum) || feeNum < 0 || feeNum > 100) {
-            Alert.alert("Invalid Fee", "Please enter a valid percentage between 0 and 100.");
-            return;
+    const fetchPendingAdmins = async () => {
+        try {
+            const data = await ApiClient.get('/auth/pending-admins');
+            setPendingAdmins(data || []);
+        } catch (err) {
+            setPendingAdmins((users || []).filter(u => u.type === 'pending_admin'));
         }
-        await updateSettings({ platformFee: feeNum });
-        Alert.alert("Settings Updated", `Platform fee is now ${feeNum}%.`);
     };
 
-    const renderItem = ({ item }) => (
-        <View style={styles.card}>
-            <View style={styles.cardHeader}>
-                <Text style={styles.businessName}>{item.businessName}</Text>
-                <View style={styles.badge}>
-                    <Text style={styles.badgeText}>Pending</Text>
+    useEffect(() => {
+        fetchPendingAdmins();
+    }, [users]);
+
+    const onRefresh = async () => {
+        setIsRefreshing(true);
+        await Promise.all([loadAllData(), fetchPendingAdmins()]);
+        setIsRefreshing(false);
+    };
+
+    const handleApproveAdminAcc = (id, email) => {
+        Alert.alert("Approve Owner", `Are you sure you want to grant ownership access to ${email}?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Approve", onPress: async () => {
+                const success = await approveAdmin(id);
+                if (success) {
+                    Alert.alert("Success", "Owner Approved.");
+                    onRefresh();
+                }
+            }}
+        ]);
+    };
+
+    const handleApprovePg = (id, name) => {
+        Alert.alert("Verify PG", `Verify and publish ${name} to the platform?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Publish Live", onPress: async () => {
+                const success = await approvePendingPg(id);
+                if (success) {
+                    Alert.alert("Success", "Property is now live for users.");
+                    onRefresh();
+                }
+            }}
+        ]);
+    };
+
+    const renderHeader = () => (
+        <View style={styles.headerContainer}>
+            <LinearGradient
+                colors={[COLORS.primary, '#8E2DE2']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.headerGradient}
+            >
+                <View style={styles.headerTop}>
+                    <View>
+                        <Text style={styles.headerTitle}>Platform Admin</Text>
+                        <Text style={styles.headerSub}>Control & Monitoring</Text>
+                    </View>
+                    <View style={styles.headerIcons}>
+                        <TouchableOpacity style={styles.iconBtn} onPress={onRefresh}>
+                            <Ionicons name="refresh" size={22} color={COLORS.white} />
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.iconBtn, styles.logoutBtn]} onPress={logout}>
+                            <Ionicons name="log-out-outline" size={22} color={COLORS.white} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
-            </View>
 
-            <View style={styles.infoRow}>
-                <Ionicons name="location-outline" size={16} color={COLORS.gray} />
-                <Text style={styles.infoText}>{item.address}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-                <Ionicons name="call-outline" size={16} color={COLORS.gray} />
-                <Text style={styles.infoText}>{item.phone}</Text>
-            </View>
-
-            <View style={styles.infoRow}>
-                <Ionicons name="cash-outline" size={16} color={COLORS.gray} />
-                <Text style={styles.infoText}>Proposed Rent: ₹{item.rent}</Text>
-            </View>
-
-            <View style={styles.actionRow}>
-                <TouchableOpacity
-                    style={[styles.actionBtn, styles.rejectBtn]}
-                    onPress={() => handleReject(item.id, item.businessName)}
-                >
-                    <Ionicons name="close" size={18} color={COLORS.error} />
-                    <Text style={styles.rejectText}>Reject</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.actionBtn, styles.approveBtn]}
-                    onPress={() => handleApprove(item.id, item.businessName)}
-                >
-                    <Ionicons name="checkmark" size={18} color={COLORS.white} />
-                    <Text style={styles.approveText}>Approve</Text>
-                </TouchableOpacity>
-            </View>
+                <View style={styles.quickStats}>
+                    <View style={styles.quickStatItem}>
+                        <Text style={styles.quickStatValue}>{(pendingPgs || []).length + (pendingAdmins || []).length}</Text>
+                        <Text style={styles.quickStatLabel}>Pending</Text>
+                    </View>
+                    <View style={styles.quickStatDivider} />
+                    <View style={styles.quickStatItem}>
+                        <Text style={styles.quickStatValue}>₹{payments.reduce((s, p) => s + (p.commissionAmount || 0), 0).toFixed(0)}</Text>
+                        <Text style={styles.quickStatLabel}>Revenue</Text>
+                    </View>
+                    <View style={styles.quickStatDivider} />
+                    <View style={styles.quickStatItem}>
+                        <Text style={styles.quickStatValue}>{(pgs || []).length}</Text>
+                        <Text style={styles.quickStatLabel}>Active PGs</Text>
+                    </View>
+                </View>
+            </LinearGradient>
         </View>
     );
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
+        <SafeAreaView style={styles.container} edges={['top']}>
+            <StatusBar barStyle="light-content" />
+            
+            {renderHeader()}
 
-            {/* Header */}
-            <View style={styles.header}>
-                <View>
-                    <Text style={styles.headerTitle}>Super Admin</Text>
-                    <Text style={styles.subGreeting}>Manage PG Onboarding</Text>
-                </View>
-                <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-                    <Ionicons name="log-out-outline" size={24} color={COLORS.white} />
-                </TouchableOpacity>
-            </View>
-
-            {/* Tabs Bar */}
             <View style={styles.tabContainer}>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
-                    {TABS.map(tab => (
+                    {TABS.map((tab) => (
                         <TouchableOpacity
                             key={tab.id}
-                            style={[styles.tabBtn, activeTab === tab.id && styles.activeTabBtn]}
+                            style={[styles.tabItem, activeTab === tab.id && styles.activeTabItem]}
                             onPress={() => setActiveTab(tab.id)}
-                            activeOpacity={0.8}
                         >
-                            <Ionicons name={tab.icon} size={18} color={activeTab === tab.id ? COLORS.white : COLORS.gray} />
-                            <Text style={[styles.tabText, activeTab === tab.id && styles.activeTabText]}>{tab.label}</Text>
+                            <Ionicons 
+                                name={tab.icon} 
+                                size={18} 
+                                color={activeTab === tab.id ? COLORS.white : COLORS.gray} 
+                            />
+                            <Text style={[styles.tabLabel, activeTab === tab.id && styles.activeTabLabel]}>
+                                {tab.label}
+                            </Text>
+                            {(tab.id === 'pending' && (pendingPgs || []).length > 0) && (
+                                <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{(pendingPgs || []).length}</Text></View>
+                            )}
+                            {(tab.id === 'admins' && (pendingAdmins || []).length > 0) && (
+                                <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{(pendingAdmins || []).length}</Text></View>
+                            )}
                         </TouchableOpacity>
                     ))}
                 </ScrollView>
             </View>
 
-            {/* Content Area */}
             <View style={styles.content}>
-                {activeTab === 'pending' && (
-                    <>
-                        <Text style={styles.sectionTitle}>
-                            Pending Verifications ({pendingPgs.length})
-                        </Text>
-                        {pendingPgs.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="shield-checkmark-outline" size={48} color={COLORS.primary} style={{ marginBottom: 16 }} />
-                                <Text style={styles.emptyTitle}>All Caught Up!</Text>
-                                <Text style={styles.emptyText}>There are no pending applications.</Text>
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={pendingPgs}
-                                keyExtractor={(item) => item.id}
-                                renderItem={renderItem}
-                                showsVerticalScrollIndicator={false}
-                                contentContainerStyle={styles.listContainer}
-                            />
-                        )}
-                    </>
-                )}
-
-                {activeTab === 'analytics' && (
-                    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-                        <Text style={styles.sectionTitle}>Platform Overview</Text>
-
-                        <View style={styles.statGrid}>
-                            <View style={styles.statCard}>
-                                <Ionicons name="business-outline" size={24} color={COLORS.primary} />
-                                <Text style={styles.statValue}>{pgs.length}</Text>
-                                <Text style={styles.statLabel}>Active PGs</Text>
-                            </View>
-                            <View style={styles.statCard}>
-                                <Ionicons name="people-outline" size={24} color={COLORS.primary} />
-                                <Text style={styles.statValue}>{users.length}</Text>
-                                <Text style={styles.statLabel}>Total Users</Text>
-                            </View>
-                            <View style={styles.statCard}>
-                                <Ionicons name="calendar-outline" size={24} color={COLORS.primary} />
-                                <Text style={styles.statValue}>{bookings.length}</Text>
-                                <Text style={styles.statLabel}>Total Bookings</Text>
-                            </View>
-                            <View style={styles.statCard}>
-                                <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
-                                <Text style={styles.statValue}>{communityPosts.length}</Text>
-                                <Text style={styles.statLabel}>Community Posts</Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.revenueCard}>
-                            <View style={styles.revenueHeader}>
-                                <Ionicons name="trending-up-outline" size={24} color={COLORS.white} />
-                                <Text style={styles.revenueTitle}>Est. Platform Revenue</Text>
-                            </View>
-                            <Text style={styles.revenueAmount}>
-                                {/* Mock Revenue Calculation: 5% of all bookings (assuming average 8000 rent per booking for this mock) */}
-                                ₹{bookings.length * 8000 * (settings.platformFee / 100)}
-                            </Text>
-                            <Text style={styles.revenueSub}>Based on {settings.platformFee}% platform fee per booking.</Text>
-                        </View>
-                    </ScrollView>
-                )}
-
-                {activeTab === 'users' && (
-                    <>
-                        <Text style={styles.sectionTitle}>
-                            Platform Users ({users.length})
-                        </Text>
-                        {users.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="people-outline" size={48} color={COLORS.primary} style={{ marginBottom: 16 }} />
-                                <Text style={styles.emptyText}>No users registered yet.</Text>
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={users}
-                                keyExtractor={(item) => item.id}
-                                showsVerticalScrollIndicator={false}
-                                contentContainerStyle={styles.listContainer}
-                                renderItem={({ item }) => (
-                                    <View style={styles.card}>
-                                        <View style={styles.cardHeader}>
-                                            <Text style={styles.businessName}>{item.email}</Text>
-                                            <View style={[styles.badge, item.status === 'suspended' && { backgroundColor: 'rgba(255,0,0,0.1)' }]}>
-                                                <Text style={[styles.badgeText, item.status === 'suspended' && { color: COLORS.error }]}>
-                                                    {item.type.toUpperCase()}
-                                                </Text>
-                                            </View>
+                <FlatList
+                    data={[]}
+                    ListHeaderComponent={() => (
+                        <View style={{ paddingBottom: 100 }}>
+                            {activeTab === 'pending' && (
+                                <View>
+                                    <View style={styles.sectionHeader}>
+                                        <Text style={styles.sectionTitle}>Verification Queue</Text>
+                                        <Text style={styles.sectionCount}>{(pendingPgs || []).length} properties</Text>
+                                    </View>
+                                    {(pendingPgs || []).length === 0 ? (
+                                        <View style={styles.emptyCard}>
+                                            <Ionicons name="checkmark-circle" size={40} color={COLORS.secondary} />
+                                            <Text style={styles.emptyText}>All properties verified</Text>
                                         </View>
-                                        <Text style={styles.infoText}>Joined: {new Date(item.joinedAt).toLocaleDateString()}</Text>
+                                    ) : (
+                                        (pendingPgs || []).map(item => (
+                                            <View key={item.id || item._id} style={styles.requestCard}>
+                                                <View style={styles.requestInfo}>
+                                                    <Text style={styles.requestTitle}>{item.name}</Text>
+                                                    <Text style={styles.requestSub}>{item.address}</Text>
+                                                    <Text style={styles.requestPrice}>Monthly Rent: ₹{item.rent}</Text>
+                                                </View>
+                                                <TouchableOpacity style={styles.approveAction} onPress={() => handleApprovePg(item.id || item._id, item.name)}>
+                                                    <Text style={styles.actionText}>VERIFY</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        ))
+                                    )}
+                                </View>
+                            )}
 
-                                        {/* Don't allow suspending superadmin */}
-                                        {item.type !== 'superadmin' && (
-                                            <TouchableOpacity
-                                                style={[styles.actionBtn, item.status === 'suspended' ? styles.approveBtn : styles.rejectBtn, { marginTop: SPACING.md }]}
-                                                onPress={() => handleSuspend(item.id, item.email, item.status)}
+                            {activeTab === 'admins' && (
+                                <View>
+                                    <View style={styles.sectionHeader}>
+                                        <Text style={styles.sectionTitle}>New Owner Requests</Text>
+                                        <Text style={styles.sectionCount}>{(pendingAdmins || []).length} pending</Text>
+                                    </View>
+                                    {(pendingAdmins || []).length === 0 ? (
+                                        <View style={styles.emptyCard}>
+                                            <Ionicons name="people-outline" size={40} color={COLORS.primary} />
+                                            <Text style={styles.emptyText}>No new onboarding requests</Text>
+                                        </View>
+                                    ) : (
+                                        (pendingAdmins || []).map(item => (
+                                            <View key={item.id || item._id} style={styles.requestCard}>
+                                                <View style={styles.requestInfo}>
+                                                    <Text style={styles.requestTitle}>{item.email}</Text>
+                                                    <Text style={styles.requestSub}>Contact: {item.phone || 'N/A'}</Text>
+                                                    <View style={styles.ownerBadge}><Text style={styles.ownerBadgeText}>Role: Admin</Text></View>
+                                                </View>
+                                                <View style={styles.dualActions}>
+                                                    <TouchableOpacity style={styles.rejectSmall} onPress={() => rejectAdmin(item.id || item._id)}>
+                                                        <Ionicons name="close" size={20} color={COLORS.error} />
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={styles.approveSmall} onPress={() => handleApproveAdminAcc(item.id || item._id, item.email)}>
+                                                        <Ionicons name="checkmark" size={20} color={COLORS.white} />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            </View>
+                                        ))
+                                    )}
+                                </View>
+                            )}
+
+                            {activeTab === 'analytics' && (
+                                <View>
+                                    <Text style={styles.sectionTitle}>Financial Performance</Text>
+                                    <LinearGradient
+                                        colors={['#11998e', '#38ef7d']}
+                                        style={styles.revenueMainCard}
+                                    >
+                                        <Text style={styles.revLabel}>Total Platform Earnings</Text>
+                                        <Text style={styles.revAmount}>₹{(payments || []).reduce((s, p) => s + (p.commissionAmount || 0), 0).toLocaleString()}</Text>
+                                        <View style={styles.revFooter}>
+                                            <Text style={styles.revSub}>Current Fee: {settings.platformFee}%</Text>
+                                            <Ionicons name="trending-up" size={20} color={COLORS.white} />
+                                        </View>
+                                    </LinearGradient>
+
+                                    <View style={styles.statsGrid}>
+                                        <View style={styles.statBox}>
+                                            <Text style={styles.statVal}>{(pgs || []).length}</Text>
+                                            <Text style={styles.statLabel}>Approved PGs</Text>
+                                        </View>
+                                        <View style={styles.statBox}>
+                                            <Text style={styles.statVal}>{(users || []).length}</Text>
+                                            <Text style={styles.statLabel}>Registered Users</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+
+                            {activeTab === 'users' && (
+                                <View>
+                                    <Text style={styles.sectionTitle}>User Directory</Text>
+                                    {(users || []).map(item => (
+                                        <View key={item.id || item._id} style={styles.userListItem}>
+                                            <View style={styles.userIcon}>
+                                                <Text style={styles.userInitials}>{(item.name || item.email || 'U').charAt(0).toUpperCase()}</Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.userName}>{item.email}</Text>
+                                                <Text style={styles.userRole}>{item.type.toUpperCase()} · {item.status}</Text>
+                                            </View>
+                                            <TouchableOpacity 
+                                                style={[styles.statusToggle, item.status === 'suspended' && { borderColor: COLORS.secondary }]} 
+                                                onPress={() => toggleUserStatus(item.id || item._id)}
                                             >
-                                                <Text style={item.status === 'suspended' ? styles.approveText : styles.rejectText}>
-                                                    {item.status === 'suspended' ? 'Activate Account' : 'Suspend Account'}
+                                                <Text style={[styles.statusToggleText, item.status === 'suspended' && { color: COLORS.secondary }]}>
+                                                    {item.status === 'active' ? 'SUSPEND' : 'ACTIVATE'}
                                                 </Text>
                                             </TouchableOpacity>
-                                        )}
-                                    </View>
-                                )}
-                            />
-                        )}
-                    </>
-                )}
-
-                {activeTab === 'moderation' && (
-                    <>
-                        <Text style={styles.sectionTitle}>
-                            Community Posts ({communityPosts.length})
-                        </Text>
-                        {communityPosts.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="shield-checkmark-outline" size={48} color={COLORS.primary} style={{ marginBottom: 16 }} />
-                                <Text style={styles.emptyText}>No posts to moderate.</Text>
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={communityPosts}
-                                keyExtractor={(item) => item.id}
-                                showsVerticalScrollIndicator={false}
-                                contentContainerStyle={styles.listContainer}
-                                renderItem={({ item }) => (
-                                    <View style={styles.card}>
-                                        <View style={styles.cardHeader}>
-                                            <Text style={styles.businessName} numberOfLines={1}>{item.title}</Text>
-                                            <View style={styles.badge}>
-                                                <Text style={styles.badgeText}>{item.type}</Text>
-                                            </View>
                                         </View>
-                                        <Text style={styles.infoText} numberOfLines={2} ellipsizeMode="tail">{item.description}</Text>
-                                        <Text style={[styles.infoText, { marginTop: 4, fontSize: 11 }]}>By: {item.contactInfo}</Text>
+                                    ))}
+                                </View>
+                            )}
 
-                                        <TouchableOpacity
-                                            style={[styles.actionBtn, styles.rejectBtn, { marginTop: SPACING.md }]}
-                                            onPress={() => handleDeletePost(item.id, item.title)}
-                                        >
-                                            <Ionicons name="trash-outline" size={16} color={COLORS.error} />
-                                            <Text style={styles.rejectText}>Delete Post</Text>
+                            {activeTab === 'settings' && (
+                                <View>
+                                    <Text style={styles.sectionTitle}>System Configuration</Text>
+                                    <View style={styles.settingsCard}>
+                                        <View style={styles.settingRow}>
+                                            <Ionicons name="card-outline" size={24} color={COLORS.primary} />
+                                            <View style={{ marginLeft: 15, flex: 1 }}>
+                                                <Text style={styles.settingLabel}>Commission Percentage</Text>
+                                                <Text style={styles.settingSub}>Fee charged per booking</Text>
+                                            </View>
+                                            <TextInput
+                                                style={styles.settingInput}
+                                                value={newFee}
+                                                onChangeText={setNewFee}
+                                                keyboardType="numeric"
+                                            />
+                                            <Text style={styles.percentText}>%</Text>
+                                        </View>
+                                        <TouchableOpacity style={styles.primaryBtn} onPress={() => {
+                                            updateSettings({ platformFee: parseFloat(newFee) });
+                                            Alert.alert("Success", "Platform fee updated.");
+                                        }}>
+                                            <Text style={styles.primaryBtnText}>Save Changes</Text>
                                         </TouchableOpacity>
                                     </View>
-                                )}
-                            />
-                        )}
-                    </>
-                )}
-
-                {activeTab === 'disputes' && (
-                    <>
-                        <Text style={styles.sectionTitle}>
-                            User Disputes ({disputes.length})
-                        </Text>
-                        {disputes.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Ionicons name="happy-outline" size={48} color={COLORS.primary} style={{ marginBottom: 16 }} />
-                                <Text style={styles.emptyText}>No disputes raised. Users are happy!</Text>
-                            </View>
-                        ) : (
-                            <FlatList
-                                data={disputes}
-                                keyExtractor={(item) => item.id}
-                                showsVerticalScrollIndicator={false}
-                                contentContainerStyle={styles.listContainer}
-                                renderItem={({ item }) => (
-                                    <View style={[styles.card, item.status === 'Resolved' && { opacity: 0.6 }]}>
-                                        <View style={styles.cardHeader}>
-                                            <Text style={styles.businessName} numberOfLines={1}>{item.title}</Text>
-                                            <View style={[styles.badge, item.status === 'Resolved' && { backgroundColor: '#E8F5E9' }]}>
-                                                <Text style={[styles.badgeText, item.status === 'Resolved' && { color: '#4CAF50' }]}>{item.status}</Text>
-                                            </View>
-                                        </View>
-                                        <Text style={styles.infoText}>Ticket ID: {item.id}</Text>
-                                        <Text style={styles.infoText}>User ID: {item.userId}</Text>
-                                        <Text style={[styles.infoText, { marginTop: SPACING.sm, color: COLORS.black }]}>{item.description}</Text>
-
-                                        {item.status !== 'Resolved' && (
-                                            <TouchableOpacity
-                                                style={[styles.actionBtn, styles.approveBtn, { marginTop: SPACING.md }]}
-                                                onPress={() => handleResolveDispute(item.id)}
-                                            >
-                                                <Ionicons name="checkmark-circle-outline" size={16} color={COLORS.white} />
-                                                <Text style={styles.approveText}>Mark Resolved</Text>
-                                            </TouchableOpacity>
-                                        )}
-                                    </View>
-                                )}
-                            />
-                        )}
-                    </>
-                )}
-
-                {activeTab === 'settings' && (
-                    <ScrollView showsVerticalScrollIndicator={false}>
-                        <Text style={styles.sectionTitle}>Global Platform Settings</Text>
-                        <View style={styles.card}>
-                            <Text style={styles.businessName}>Platform Fee (%)</Text>
-                            <Text style={[styles.infoText, { marginVertical: SPACING.sm }]}>
-                                This percentage is applied to mock revenue calculations on the Analytics dashboard.
-                            </Text>
-                            <TextInput
-                                style={styles.textInput}
-                                value={newFee}
-                                onChangeText={setNewFee}
-                                keyboardType="numeric"
-                            />
-                            <TouchableOpacity
-                                style={[styles.actionBtn, styles.approveBtn, { alignSelf: 'flex-start', marginLeft: 0 }]}
-                                onPress={handleSaveSettings}
-                            >
-                                <Ionicons name="save-outline" size={16} color={COLORS.white} />
-                                <Text style={styles.approveText}>Save Settings</Text>
-                            </TouchableOpacity>
+                                </View>
+                            )}
                         </View>
-                    </ScrollView>
-                )}
+                    )}
+                    refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+                />
             </View>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: COLORS.white,
-    },
-    header: {
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: SPACING.lg,
-        paddingTop: SPACING.md,
-        paddingBottom: SPACING.xl,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottomLeftRadius: BORDER_RADIUS.xl,
-        borderBottomRightRadius: BORDER_RADIUS.xl,
-    },
-    headerTitle: {
-        ...TYPOGRAPHY.h1,
-        color: COLORS.white,
-    },
-    subGreeting: {
-        fontSize: FONT_SIZES.md,
-        color: COLORS.white,
-        opacity: 0.8,
-        marginTop: 4,
-    },
-    logoutBtn: {
-        padding: SPACING.sm,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        borderRadius: BORDER_RADIUS.round,
-    },
-    content: {
-        flex: 1,
-        backgroundColor: COLORS.backgroundGray,
-        marginTop: -SPACING.md,
-        borderTopLeftRadius: BORDER_RADIUS.xl,
-        borderTopRightRadius: BORDER_RADIUS.xl,
-        paddingHorizontal: SPACING.lg,
-        paddingTop: SPACING.xl,
-    },
-    sectionTitle: {
-        ...TYPOGRAPHY.h3,
-        color: COLORS.black,
-        marginBottom: SPACING.md,
-    },
-    listContainer: {
-        paddingBottom: SPACING.xxl,
-    },
-    card: {
-        backgroundColor: COLORS.white,
-        borderRadius: BORDER_RADIUS.lg,
-        padding: SPACING.lg,
-        marginBottom: SPACING.md,
-        ...SHADOWS.medium,
-    },
-    cardHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: SPACING.md,
-    },
-    businessName: {
-        ...TYPOGRAPHY.h3,
-        color: COLORS.black,
-        flex: 1,
-        marginRight: SPACING.sm,
-    },
-    badge: {
-        backgroundColor: COLORS.backgroundPink,
-        paddingHorizontal: SPACING.sm,
-        paddingVertical: 4,
-        borderRadius: BORDER_RADIUS.sm,
-    },
-    badgeText: {
-        color: COLORS.primary,
-        fontSize: FONT_SIZES.xs,
-        fontWeight: FONT_WEIGHTS.bold,
-    },
-    infoRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: SPACING.sm,
-    },
-    infoText: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.gray,
-        marginLeft: SPACING.sm,
-        flex: 1,
-    },
-    actionRow: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        marginTop: SPACING.md,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.borderLight,
-        paddingTop: SPACING.md,
-    },
-    actionBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: SPACING.md,
-        borderRadius: BORDER_RADIUS.md,
-        marginLeft: SPACING.md,
-    },
-    rejectBtn: {
-        backgroundColor: COLORS.backgroundPink,
-    },
-    rejectText: {
-        color: COLORS.error,
-        fontWeight: FONT_WEIGHTS.bold,
-        marginLeft: 4,
-    },
-    approveBtn: {
-        backgroundColor: COLORS.success,
-    },
-    approveText: {
-        color: COLORS.white,
-        fontWeight: FONT_WEIGHTS.bold,
-        marginLeft: 4,
-    },
-    emptyState: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginTop: 40,
-    },
-    emptyTitle: {
-        ...TYPOGRAPHY.h2,
-        color: COLORS.black,
-        marginBottom: SPACING.xs,
-    },
-    emptyText: {
-        fontSize: FONT_SIZES.md,
-        color: COLORS.gray,
-        textAlign: 'center',
-        paddingHorizontal: SPACING.xl,
-        lineHeight: 22,
-    },
-    tabContainer: {
-        backgroundColor: COLORS.white,
-        paddingVertical: SPACING.sm,
-        borderBottomWidth: 1,
-        borderBottomColor: COLORS.borderLight,
-        zIndex: 10
-    },
-    tabScroll: {
-        paddingHorizontal: SPACING.md,
-    },
-    tabBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: BORDER_RADIUS.xl,
-        marginHorizontal: 4,
-        backgroundColor: COLORS.backgroundGray
-    },
-    activeTabBtn: {
-        backgroundColor: COLORS.primary,
-    },
-    tabText: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.gray,
-        fontWeight: FONT_WEIGHTS.bold,
-        marginLeft: 6
-    },
-    activeTabText: {
-        color: COLORS.white,
-    },
-    statGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        marginBottom: SPACING.lg
-    },
-    statCard: {
-        width: '48%',
-        backgroundColor: COLORS.white,
-        padding: SPACING.md,
-        borderRadius: BORDER_RADIUS.lg,
-        marginBottom: SPACING.md,
-        ...SHADOWS.medium,
-        alignItems: 'center'
-    },
-    statValue: {
-        ...TYPOGRAPHY.h2,
-        color: COLORS.black,
-        marginTop: 8,
-        marginBottom: 2
-    },
-    statLabel: {
-        fontSize: FONT_SIZES.xs,
-        color: COLORS.gray,
-        fontWeight: FONT_WEIGHTS.bold,
-        textTransform: 'uppercase'
-    },
-    revenueCard: {
-        backgroundColor: COLORS.black,
-        borderRadius: BORDER_RADIUS.xl,
-        padding: SPACING.xl,
-        ...SHADOWS.large
-    },
-    revenueHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: SPACING.sm
-    },
-    revenueTitle: {
-        fontSize: FONT_SIZES.md,
-        color: COLORS.white,
-        fontWeight: FONT_WEIGHTS.bold,
-        marginLeft: SPACING.sm
-    },
-    revenueAmount: {
-        fontSize: 36,
-        fontWeight: FONT_WEIGHTS.extrabold,
-        color: COLORS.success,
-        marginBottom: 8
-    },
-    revenueSub: {
-        fontSize: FONT_SIZES.sm,
-        color: 'rgba(255,255,255,0.7)',
-    },
-    textInput: {
-        backgroundColor: COLORS.backgroundGray,
-        borderRadius: BORDER_RADIUS.md,
-        padding: SPACING.md,
-        fontSize: FONT_SIZES.md,
-        color: COLORS.black,
-        marginBottom: SPACING.md,
-        borderWidth: 1,
-        borderColor: COLORS.borderLight
-    }
+    container: { flex: 1, backgroundColor: '#F0F2F5' },
+    headerContainer: { backgroundColor: COLORS.white },
+    headerGradient: { padding: SPACING.xl, borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
+    headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+    headerTitle: { fontSize: 26, fontWeight: '900', color: COLORS.white, letterSpacing: -0.5 },
+    headerSub: { fontSize: 14, color: 'rgba(255,255,255,0.8)', fontWeight: '500' },
+    headerIcons: { flexDirection: 'row', gap: 15 },
+    iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+    logoutBtn: { backgroundColor: 'rgba(255,0,0,0.3)' },
+    quickStats: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20, paddingVertical: 15 },
+    quickStatItem: { alignItems: 'center' },
+    quickStatValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.white },
+    quickStatLabel: { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 2, textTransform: 'uppercase' },
+    quickStatDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.2)' },
+    tabContainer: { paddingVertical: 15, backgroundColor: '#F0F2F5' },
+    tabScroll: { paddingHorizontal: 15 },
+    tabItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 25, marginRight: 10, backgroundColor: COLORS.white, ...SHADOWS.small },
+    activeTabItem: { backgroundColor: COLORS.primary },
+    tabLabel: { marginLeft: 8, fontSize: 13, color: COLORS.gray, fontWeight: '700' },
+    activeTabLabel: { color: COLORS.white },
+    tabBadge: { marginLeft: 6, backgroundColor: COLORS.secondary, borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+    tabBadgeText: { color: COLORS.white, fontSize: 10, fontWeight: 'bold' },
+    content: { flex: 1, padding: SPACING.lg },
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 15 },
+    sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1A1A1A' },
+    sectionCount: { fontSize: 12, color: COLORS.gray, fontWeight: '600' },
+    requestCard: { flexDirection: 'row', backgroundColor: COLORS.white, borderRadius: 18, padding: 18, marginBottom: 15, alignItems: 'center', ...SHADOWS.small },
+    requestInfo: { flex: 1 },
+    requestTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.black, marginBottom: 4 },
+    requestSub: { fontSize: 13, color: COLORS.gray, marginBottom: 6 },
+    requestPrice: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
+    approveAction: { backgroundColor: '#E8F5E9', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
+    actionText: { color: '#2E7D32', fontWeight: '900', fontSize: 11 },
+    emptyCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 30, alignItems: 'center', marginTop: 10, ...SHADOWS.small },
+    emptyText: { marginTop: 10, color: COLORS.gray, fontWeight: '600' },
+    dualActions: { flexDirection: 'row', gap: 10 },
+    rejectSmall: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: COLORS.error, justifyContent: 'center', alignItems: 'center' },
+    approveSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+    ownerBadge: { alignSelf: 'flex-start', backgroundColor: '#F0F2F5', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 5 },
+    ownerBadgeText: { fontSize: 10, color: COLORS.gray, fontWeight: 'bold' },
+    revenueMainCard: { borderRadius: 25, padding: 25, marginBottom: 25, ...SHADOWS.medium },
+    revLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
+    revAmount: { color: COLORS.white, fontSize: 36, fontWeight: '900', marginVertical: 10 },
+    revFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
+    revSub: { color: COLORS.white, fontSize: 13, fontWeight: '500' },
+    statsGrid: { flexDirection: 'row', gap: 15 },
+    statBox: { flex: 1, backgroundColor: COLORS.white, borderRadius: 20, padding: 20, alignItems: 'center', ...SHADOWS.small },
+    statVal: { fontSize: 24, fontWeight: 'bold', color: COLORS.black },
+    userListItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.white, padding: 15, borderRadius: 18, marginBottom: 12, ...SHADOWS.small },
+    userIcon: { width: 45, height: 45, borderRadius: 23, backgroundColor: '#F0F2F5', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+    userInitials: { fontSize: 18, fontWeight: 'bold', color: COLORS.primary },
+    userName: { fontSize: 15, fontWeight: '700', color: COLORS.black },
+    userRole: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
+    statusToggle: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.error },
+    statusToggleText: { fontSize: 10, fontWeight: 'bold', color: COLORS.error },
+    settingsCard: { backgroundColor: COLORS.white, borderRadius: 20, padding: 20, ...SHADOWS.small },
+    settingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
+    settingLabel: { fontSize: 15, fontWeight: 'bold', color: COLORS.black },
+    settingSub: { fontSize: 12, color: COLORS.gray },
+    settingInput: { width: 60, height: 40, backgroundColor: '#F0F2F5', borderRadius: 10, textAlign: 'center', fontSize: 16, fontWeight: 'bold', color: COLORS.primary },
+    percentText: { fontSize: 18, fontWeight: 'bold', color: COLORS.gray, marginLeft: 5 },
+    primaryBtn: { backgroundColor: COLORS.primary, borderRadius: 15, paddingVertical: 15, alignItems: 'center', ...SHADOWS.primary },
+    primaryBtnText: { color: COLORS.white, fontSize: 16, fontWeight: 'bold' }
 });

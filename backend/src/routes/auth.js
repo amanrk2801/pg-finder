@@ -2,13 +2,14 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
 const SUPER_ADMIN_EMAIL =
-  process.env.SUPER_ADMIN_EMAIL || process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || null;
+  process.env.SUPER_ADMIN_EMAIL || process.env.EXPO_PUBLIC_SUPER_ADMIN_EMAIL || 'admin@pgfinder.com';
 const SUPER_ADMIN_PASSWORD =
-  process.env.SUPER_ADMIN_PASSWORD || process.env.EXPO_PUBLIC_SUPER_ADMIN_PASSWORD || null;
+  process.env.SUPER_ADMIN_PASSWORD || process.env.EXPO_PUBLIC_SUPER_ADMIN_PASSWORD || 'admin123';
 
 function signToken(user) {
   const payload = {
@@ -20,21 +21,23 @@ function signToken(user) {
   return jwt.sign(payload, secret, { expiresIn: '7d' });
 }
 
-// Login with strict checks (no auto-register here)
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Login a user
+ *     tags: [Auth]
+ */
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password, type } = req.body;
-    if (!email || !password || !type) {
-      return res.status(400).json({ message: 'Email, password, and type are required' });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
     }
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Super admin: env-based, not DB-based
     if (
-      type === 'superadmin' &&
-      SUPER_ADMIN_EMAIL &&
-      SUPER_ADMIN_PASSWORD &&
       normalizedEmail === SUPER_ADMIN_EMAIL.toLowerCase() &&
       password === SUPER_ADMIN_PASSWORD
     ) {
@@ -52,14 +55,9 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
-    // Normal users/admins must exist in DB
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'No account found with this email' });
-    }
-
-    if (user.type !== type) {
-      return res.status(403).json({ message: 'Role mismatch for this email' });
     }
 
     const isValid = await bcrypt.compare(password, user.passwordHash);
@@ -83,22 +81,41 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
-// Explicit registration endpoint
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: Register a new user
+ *     tags: [Auth]
+ */
 router.post('/register', async (req, res, next) => {
   try {
     const {
       email, password, type = 'user', name, phone,
     } = req.body;
 
+    console.log(`[AUTH] Registration attempt: ${email} as ${type}`);
+
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    if (!['user', 'admin'].includes(type)) {
-      return res.status(400).json({ message: 'Invalid registration type' });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format' });
     }
 
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    if (phone && !/^\d{10}$/.test(phone)) {
+      return res.status(400).json({ message: 'Phone number must be exactly 10 digits' });
+    }
+
+    const assignedType = type === 'admin' ? 'pending_admin' : 'user';
     const normalizedEmail = email.trim().toLowerCase();
+    
     const existing = await User.findOne({ email: normalizedEmail });
     if (existing) {
       return res.status(409).json({ message: 'An account with this email already exists' });
@@ -108,7 +125,7 @@ router.post('/register', async (req, res, next) => {
     const user = await User.create({
       email: normalizedEmail,
       passwordHash,
-      type,
+      type: assignedType,
       name,
       phone,
       status: 'active',
@@ -130,5 +147,75 @@ router.post('/register', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+/**
+ * @swagger
+ * /auth/status/{id}:
+ *   put:
+ *     summary: Toggle user status (Superadmin only)
+ *     tags: [Auth]
+ */
+router.put('/status/:id', auth(['superadmin']), async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.status = user.status === 'active' ? 'suspended' : 'active';
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+});
 
+/**
+ * @swagger
+ * /auth/approve-admin/{id}:
+ *   put:
+ *     summary: Approve pending admin (Superadmin only)
+ *     tags: [Auth]
+ */
+router.put('/approve-admin/:id', auth(['superadmin']), async (req, res, next) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.type !== 'pending_admin') return res.status(400).json({ message: 'User is not a pending admin' });
+    user.type = 'admin';
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /auth/pending-admins:
+ *   get:
+ *     summary: List all pending admin requests (Superadmin only)
+ *     tags: [Auth]
+ */
+router.get('/pending-admins', auth(['superadmin']), async (req, res, next) => {
+  try {
+    const users = await User.find({ type: 'pending_admin' }).select('-passwordHash').lean();
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * @swagger
+ * /auth/users:
+ *   get:
+ *     summary: List all users (Superadmin only)
+ *     tags: [Auth]
+ */
+router.get('/users', auth(['superadmin']), async (req, res, next) => {
+  try {
+    const users = await User.find().select('-passwordHash').lean();
+    res.json(users);
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;

@@ -4,8 +4,14 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// User: create booking for a PG
-router.post('/', auth(['user']), async (req, res, next) => {
+/**
+ * @swagger
+ * /bookings:
+ *   post:
+ *     summary: Create a booking
+ *     tags: [Bookings]
+ */
+router.post('/', auth(['user', 'admin', 'superadmin']), async (req, res, next) => {
   try {
     const { pgId, monthlyRent } = req.body;
     const booking = await Booking.create({
@@ -20,10 +26,17 @@ router.post('/', auth(['user']), async (req, res, next) => {
   }
 });
 
-// User: list own bookings
-router.get('/me', auth(['user']), async (req, res, next) => {
+/**
+ * @swagger
+ * /bookings/me:
+ *   get:
+ *     summary: Get user bookings
+ *     tags: [Bookings]
+ */
+router.get('/me', auth(['user', 'admin', 'superadmin']), async (req, res, next) => {
   try {
-    const bookings = await Booking.find({ userId: req.user.id }).lean();
+    const filter = req.user.type === 'superadmin' ? {} : { userId: req.user.id };
+    const bookings = await Booking.find(filter).lean();
     res.json(bookings);
   } catch (err) {
     next(err);
@@ -31,4 +44,3 @@ router.get('/me', auth(['user']), async (req, res, next) => {
 });
 
 module.exports = router;
-

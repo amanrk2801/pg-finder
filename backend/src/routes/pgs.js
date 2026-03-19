@@ -4,11 +4,31 @@ const auth = require('../middleware/auth');
 
 const router = express.Router();
 
-// Public: list all approved PGs
-router.get('/', async (req, res, next) => {
+/**
+ * @swagger
+ * /pgs:
+ *   get:
+ *     summary: List PGs (Role-based visibility)
+ *     tags: [PGs]
+ */
+router.get('/', auth(['user', 'admin', 'superadmin'], true), async (req, res, next) => {
   try {
     const { city, minRent, maxRent } = req.query;
-    const filter = { status: 'approved' };
+    
+    let filter = { status: 'approved' };
+
+    if (req.user) {
+      if (req.user.type === 'superadmin') {
+        filter = {};
+      } else if (req.user.type === 'admin') {
+        filter = {
+          $or: [
+            { status: 'approved' },
+            { adminId: req.user.id }
+          ]
+        };
+      }
+    }
 
     if (city) filter.city = city;
     if (minRent) filter.rent = { ...filter.rent, $gte: Number(minRent) };
@@ -21,7 +41,13 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// Public: get single PG
+/**
+ * @swagger
+ * /pgs/{id}:
+ *   get:
+ *     summary: Get PG by ID
+ *     tags: [PGs]
+ */
 router.get('/:id', async (req, res, next) => {
   try {
     const pg = await PG.findById(req.params.id).lean();
@@ -32,10 +58,19 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
-// Admin: create PG
+/**
+ * @swagger
+ * /pgs:
+ *   post:
+ *     summary: Create a new PG (Admin only)
+ *     tags: [PGs]
+ *     security:
+ *       - bearerAuth: []
+ */
 router.post('/', auth(['admin']), async (req, res, next) => {
   try {
-    const data = { ...req.body, adminId: req.user.id };
+    const data = { ...req.body, adminId: req.user.id, status: 'pending' };
+    console.log(`[PG] Creating new PG for admin ${req.user.id}`);
     const pg = await PG.create(data);
     res.status(201).json(pg);
   } catch (err) {
@@ -43,20 +78,43 @@ router.post('/', auth(['admin']), async (req, res, next) => {
   }
 });
 
-// Admin: update PG they own
-router.put('/:id', auth(['admin']), async (req, res, next) => {
+/**
+ * @swagger
+ * /pgs/{id}:
+ *   put:
+ *     summary: Update a PG
+ *     tags: [PGs]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.put('/:id', auth(['admin', 'superadmin']), async (req, res, next) => {
   try {
+    const { id: pgId } = req.params;
+    const adminId = req.user.id;
+
+    console.log(`[PG] Update request for ${pgId} by ${adminId} (${req.user.type})`);
+
+    const filter = req.user.type === 'superadmin' 
+      ? { _id: pgId } 
+      : { _id: pgId, adminId: adminId };
+
     const pg = await PG.findOneAndUpdate(
-      { _id: req.params.id, adminId: req.user.id },
-      req.body,
-      { new: true },
+      filter,
+      { $set: req.body }, // Use $set to be explicit
+      { new: true, runValidators: true },
     );
-    if (!pg) return res.status(404).json({ message: 'PG not found or not owned by admin' });
+
+    if (!pg) {
+      console.warn(`[PG] Update failed: PG ${pgId} not found or not owned by ${adminId}`);
+      return res.status(404).json({ message: 'PG not found or unauthorized' });
+    }
+
+    console.log(`[PG] Update successful for ${pgId}`);
     return res.json(pg);
   } catch (err) {
+    console.error(`[PG] Update Error:`, err.message);
     return next(err);
   }
 });
 
 module.exports = router;
-
