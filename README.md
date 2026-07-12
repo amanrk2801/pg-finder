@@ -1,6 +1,6 @@
-# PG Living App
+# PG Finder
 
-A full-featured **PG (Paying Guest) management app** built with React Native and Expo. It covers the complete lifecycle: finding a PG, booking a bed, paying monthly rent, viewing mess menus, and managing properties as an admin.
+A full-stack **PG (Paying Guest) accommodation platform** — a React Native (Expo) mobile app backed by a Node.js/Express + MongoDB REST API. It covers the complete lifecycle: discovering PGs on a map, booking a bed, paying rent, viewing mess menus, raising issues, and managing properties as an owner — with a superadmin overseeing the whole platform.
 
 ---
 
@@ -10,11 +10,12 @@ A full-featured **PG (Paying Guest) management app** built with React Native and
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
+- [Environment Variables](#environment-variables)
 - [App Roles & Flows](#app-roles--flows)
-- [Test Credentials](#test-credentials)
-- [Architecture Overview](#architecture-overview)
+- [API Overview](#api-overview)
+- [Architecture](#architecture)
+- [Scripts](#scripts)
 - [Roadmap](#roadmap)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -22,27 +23,30 @@ A full-featured **PG (Paying Guest) management app** built with React Native and
 ## Features
 
 ### For Tenants (Users)
-- Browse PG listings with search, filters (budget, gender, premium), and map view
-- View PG details with image gallery, facilities, safety measures, and reviews
-- Book a bed and pay rent via Razorpay-style checkout (simulated for Expo Go)
-- **My PG Dashboard** — rent status, due dates, today's mess menu, quick actions
-- **Weekly Mess Menu** — 7-day view with breakfast, lunch, dinner and timings
-- **Payment History** — month-wise transaction log with status badges
-- Favorites — save and revisit PGs of interest
-- Community board — post and browse jobs, services, sale items
-- Profile management
+- Browse PG listings with search, filters, and an interactive **map view** (price markers with a home icon; tap a marker for a callout card with **Book Now** directly on the map)
+- PG details with image gallery, facilities, safety measures, and reviews
+- **Book a bed** with a Razorpay-style checkout (simulated in Expo Go); duplicate bookings for the same PG are blocked both client- and server-side
+- **My PG dashboard** — rent status (paid / due / overdue), next due date, today's mess menu, quick actions (pay rent, raise issue, leave PG)
+- **Weekly mess menu** — 7 days × breakfast/lunch/dinner, plus today's special
+- **Payment history** — month-wise transaction log with amounts and status
+- Favorites (stored on-device)
+- **Community board** — post/browse Sale, Job, and Service listings; the contact button deep-links to **WhatsApp** with a pre-filled message referencing the post
+- Leave-PG requests that the admin approves/rejects
 
-### For PG Admins
-- Register business and submit for Super Admin approval
-- Add and edit PG properties with images, facilities, pricing
-- Manage weekly mess menu per property
-- View property stats (rooms, beds, occupancy)
+### For PG Owners (Admins)
+- Register as an owner with **verification details** (business registration number + property ownership proof reference); account stays `pending_admin` until superadmin approval
+- Add/edit properties with photos, facilities, safety measures, pricing, and **GPS location capture** (tap once while standing at the property — coordinates are saved and the full address is auto-filled via reverse geocoding)
+- Manage the weekly mess menu per property
+- **Bookings tab with notifications** — new bookings (last 24 h) show a tab badge and highlighted card with tenant name/contact, booked-at time, amount paid, transaction ID, and payment method
+- Approve/reject tenant leave requests
 
-### For Super Admin
-- Approve or reject new PG admin registrations
-- Manage all users (suspend/activate)
+### For the Super Admin
+- Verify and publish pending PG listings
+- Approve/reject new owner registrations (verification details shown on the approval card)
+- **Manage PGs** — see every onboarded property with LIVE/DEACTIVATED status; deactivate (hide from users, reversible), reactivate, or permanently delete any PG
+- Manage users (suspend/activate)
 - Resolve disputes raised by tenants
-- Platform settings (platform fee %)
+- Platform analytics (revenue from commission) and settings (platform fee %)
 
 ---
 
@@ -50,53 +54,67 @@ A full-featured **PG (Paying Guest) management app** built with React Native and
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | React Native 0.81 + Expo SDK 54 |
+| Mobile app | React Native 0.81 + Expo SDK 54 |
 | Navigation | React Navigation 7 (Stack + Bottom Tabs) |
-| State Management | React Context API + Custom Hooks |
-| Persistence | AsyncStorage (offline-first, no backend) |
-| Maps | react-native-maps |
-| Payments | Razorpay-compatible PaymentService (simulated) |
-| UI | Custom component library + Ionicons |
-| Styling | StyleSheet with centralized theme constants |
+| App state | React Context API + custom hooks (`useAuth`, `useData`) |
+| Backend | Node.js + Express 4 |
+| Database | MongoDB + Mongoose 8 |
+| Auth | JWT (7-day tokens), bcrypt password hashing, role-based middleware |
+| API docs | Swagger UI at `/api/docs` (swagger-jsdoc) |
+| Maps & location | react-native-maps, expo-location (GPS + reverse geocoding) |
+| Payments | PaymentService abstraction (simulated Razorpay checkout in Expo Go) |
+| On-device storage | AsyncStorage — session token and favorites only |
 
 ---
 
 ## Project Structure
 
 ```
-src/
-├── components/
-│   ├── cards/                  # PGCard, PostCard
-│   └── common/                 # Reusable UI: ScreenHeader, SearchBar,
-│                               #   FilterChips, EmptyState, CustomButton,
-│                               #   CustomInput, PillSelector, GenderSelector,
-│                               #   ImagePickerSection
-├── constants/
-│   └── theme.js                # COLORS, SPACING, FONT_SIZES, TYPOGRAPHY, etc.
-├── context/
-│   ├── AuthContext.js           # Authentication state + login/logout
-│   └── DataContext.js           # All app data: PGs, bookings, payments, menus
-├── hooks/
-│   ├── useAuth.js               # Typed wrapper for AuthContext
-│   └── useData.js               # Typed wrapper for DataContext
-├── navigation/
-│   ├── AppNavigator.js          # Root stack navigator (all screens)
-│   ├── UserTabNavigator.js      # Bottom tab bar (Home, My PG, Bookings, etc.)
-│   └── routes.js                # Centralized route name constants
-├── screens/
-│   ├── admin/                   # AdminDashboard, AddPG, EditPG, ManageMenu, etc.
-│   ├── common/                  # ProfileScreen (shared between user/admin)
-│   ├── superadmin/              # SuperAdminDashboard
-│   ├── user/                    # UserDashboard, MyPG, Payment, WeeklyMenu, etc.
-│   └── LoginScreen.js           # Auth entry point
-├── services/
-│   ├── PaymentService.js        # Razorpay integration layer (simulated for Expo Go)
-│   └── StorageService.js        # AsyncStorage wrapper with domain methods
-└── utils/
-    └── pgFormConfig.js          # PG form validation, options, converters
+pg-finder-app/
+├── App.js / index.js            # Expo entry (AuthProvider → DataProvider → AppNavigator)
+├── .env.example                 # Frontend env template
+├── src/
+│   ├── components/
+│   │   ├── cards/               # PGCard, PostCard
+│   │   └── common/              # CustomButton, CustomInput, ScreenHeader, SearchBar,
+│   │                            #   FilterChips, EmptyState, PillSelector, GenderSelector,
+│   │                            #   ImagePickerSection
+│   ├── constants/
+│   │   ├── config.js            # API_BASE_URL from EXPO_PUBLIC_API_BASE_URL
+│   │   ├── theme.js             # COLORS, SPACING, TYPOGRAPHY, SHADOWS
+│   │   └── auth.js              # Superadmin bypass config (env-driven)
+│   ├── context/
+│   │   ├── AuthContext.js       # Login/register/logout, JWT session
+│   │   └── DataContext.js       # All domain data, fetched from the API
+│   ├── hooks/                   # useAuth(), useData()
+│   ├── navigation/              # AppNavigator, UserTabNavigator, AdminTabNavigator, routes.js
+│   ├── screens/
+│   │   ├── user/                # Dashboard, Map, PG details, Payment, MyPG, Bookings,
+│   │   │                        #   Community, Menus, Favorites, RaiseIssue, ...
+│   │   ├── admin/               # Dashboard, Add/Edit PG, ManageMenu, Bookings, Leaves, ...
+│   │   ├── superadmin/          # SuperAdminDashboard (tabs: requests, manage PGs, owners,
+│   │   │                        #   analytics, users, settings)
+│   │   └── common/              # ProfileScreen
+│   ├── services/                # ApiClient (fetch + JWT), PaymentService, StorageService
+│   └── utils/                   # id.js, pgFormConfig.js
+├── backend/
+│   ├── .env.example             # Backend env template
+│   ├── eslint.config.js
+│   ├── src/
+│   │   ├── config/              # env.js, db.js, swagger.js
+│   │   ├── controllers/         # One per domain (auth, pg, booking, payment, community,
+│   │   │                        #   settings, review, mess, leave, dispute)
+│   │   ├── middleware/          # auth (JWT + roles), errorHandler
+│   │   ├── models/              # User, PG, Booking, Payment, CommunityPost, Review,
+│   │   │                        #   MessMenu, LeaveRequest, Dispute, Settings
+│   │   ├── routes/              # Thin routers + index.js mount point
+│   │   ├── utils/               # jwt.js
+│   │   ├── app.js               # Express assembly (middleware, routes, error handler)
+│   │   └── server.js            # Bootstrap: connect DB, listen
+│   └── tests/                   # Node test runner (uses a dedicated test database)
+├── scripts/lint.js              # Repo-wide merge-marker/tab checks
+└── tests/                       # Frontend unit tests (node:test)
 ```
-
-**Stats:** 20 screens | 12 components | 2 services | 2 hooks | 2 contexts
 
 ---
 
@@ -104,196 +122,157 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
-- Expo CLI (`npm install -g expo-cli`)
-- Expo Go app on your phone (or Android/iOS emulator)
+- Node.js 20+
+- MongoDB running locally (or a connection string, e.g. Atlas)
+- Expo Go app on your phone (or an emulator)
 
-### Installation
+### 1. Backend
 
 ```bash
-# Clone the repo
-git clone <repo-url>
-cd pg-finder-app
-
-# Install dependencies
+cd backend
 npm install
+cp .env.example .env        # then edit values
+npm run dev                 # nodemon on http://localhost:4000
+```
 
-# Start the dev server
+API docs are served at `http://localhost:4000/api/docs`, health check at `/api/health`.
+
+### 2. Mobile app
+
+```bash
+# from the repo root
+npm install
+cp .env.example .env        # set EXPO_PUBLIC_API_BASE_URL to YOUR machine's LAN IP
 npx expo start
 ```
 
-Scan the QR code with Expo Go (Android) or Camera app (iOS) to run on your device.
+Scan the QR code with Expo Go. **Important:** your phone and computer must be on the same Wi-Fi network, and `EXPO_PUBLIC_API_BASE_URL` must use your machine's LAN IP (e.g. `http://192.168.1.5:4000/api`) — `localhost` won't work from a physical device. Env vars are baked in at bundle time, so restart Expo (`npx expo start -c`) after changing `.env`.
 
-### Clear Old Data (if upgrading)
+---
 
-If you're upgrading from an older version, clear AsyncStorage to avoid stale data issues:
+## Environment Variables
 
-- **Android:** Settings > Apps > Expo Go > Clear Data
-- **iOS:** Delete and reinstall Expo Go
-- **Programmatic:** Add `AsyncStorage.clear()` temporarily in App.js
+### Frontend (`.env`)
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_API_BASE_URL` | Backend base URL, reachable from the device |
+| `EXPO_PUBLIC_USE_BACKEND` | `true` (backend-driven mode) |
+| `EXPO_PUBLIC_SUPER_ADMIN_EMAIL` / `_PASSWORD` | Enables the superadmin login (dev only) |
+
+### Backend (`backend/.env`)
+
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | API port (default 4000) |
+| `MONGODB_URI` | MongoDB connection string (default `mongodb://localhost:27017/pg_finder`) |
+| `JWT_SECRET` | **Required in production** — token signing key |
+| `SUPER_ADMIN_EMAIL` / `_PASSWORD` | Env-based superadmin account (not stored in DB) |
+| `MONGODB_TEST_URI` | Test database (tests drop it on teardown — never point at real data) |
+
+`.env` files are gitignored; commit changes to the `.env.example` templates instead.
 
 ---
 
 ## App Roles & Flows
 
-### Environment Variables
-
-Create a `.env` file (or configure Expo env vars) for privileged flows:
-
-```bash
-EXPO_PUBLIC_SUPER_ADMIN_EMAIL=superadmin@pg.com
-EXPO_PUBLIC_SUPER_ADMIN_PASSWORD=strong-password
-EXPO_PUBLIC_USE_REAL_RAZORPAY=false
-EXPO_PUBLIC_RAZORPAY_KEY=rzp_test_xxx
-EXPO_PUBLIC_PAYMENTS_API_BASE_URL=https://your-api.example.com
+### Tenant flow
+```
+Register (as Tenant) → Browse / Map → PG details or map callout → Book Bed →
+Pay (booking auto-confirms, bed count decrements server-side) →
+My PG dashboard → Pay monthly rent → Payment history → Leave request when moving out
 ```
 
-
-### User Flow
+### Owner flow
 ```
-Login (as User) → Browse PGs → View Details → Book Bed → Pay →
-My PG Dashboard (rent status, mess menu) → Pay Monthly Rent → Payment History
-```
-
-### Admin Flow
-```
-Login (as Admin) → Fill Business Details → Awaits Super Admin Approval →
-Admin Dashboard → Add/Edit PGs → Manage Mess Menu
+Register (as Owner, with business reg no. + ownership proof) → pending approval →
+Superadmin approves → Add property (photos, GPS location, details) → pending verification →
+Superadmin publishes → Manage menu / view bookings with payment details / handle leaves
 ```
 
-### Super Admin Flow
+### Superadmin flow
 ```
-Login (configured via EXPO_PUBLIC_SUPER_ADMIN_EMAIL / EXPO_PUBLIC_SUPER_ADMIN_PASSWORD) → Approve Pending Admins →
-Manage Users → Resolve Disputes → Platform Settings
+Login (env credentials) → Verify PG listings → Approve owners (check documents) →
+Manage PGs (deactivate / reactivate / delete) → Users / Disputes / Analytics / Settings
 ```
+
+Bookings are **auto-confirmed on payment** — the owner is notified in-app (Bookings tab badge + transaction details) rather than gating each booking on manual approval.
 
 ---
 
-## Test Credentials
+## API Overview
 
-| Role | Email | Password |
-|------|-------|----------|
-| Super Admin | Set via `EXPO_PUBLIC_SUPER_ADMIN_EMAIL` | Set via `EXPO_PUBLIC_SUPER_ADMIN_PASSWORD` |
-| Admin | Any email (e.g. `admin@test.com`) | Any password |
-| User | Any email (e.g. `user@test.com`) | Any password |
+All routes are prefixed with `/api`. Auth is a `Bearer <JWT>` header.
 
-> **Note:** Super admin login is disabled unless the two env vars above are configured. Admin and user accounts are still local/demo-only and are role-locked per email.
-
----
-
-## Architecture Overview
-
-### State Management
-
-```
-App.js
-  └── AuthProvider (login, logout, user session)
-        └── DataProvider (PGs, bookings, payments, menus, posts, disputes)
-              └── AppNavigator (all screens consume context via hooks)
-```
-
-- **AuthContext** — Handles login/logout, session persistence, user profile updates
-- **DataContext** — Single source of truth for all domain data. Uses a `persistAndSet` helper to atomically save to AsyncStorage and update React state
-- **useAuth() / useData()** — Custom hooks with error boundaries for context access
-
-### Data Entities
-
-| Entity | Key Fields |
+| Domain | Endpoints |
 |--------|-----------|
-| PG | id, name, address, location, rent, facilities, adminId |
-| Booking | id, userId, pgId, status, monthlyRent, nextDueDate |
-| Payment | id, bookingId, userId, amount, method, transactionId, status, month, year |
-| MessMenu | pgId, weeklyMenu (7 days × 3 meals), todaysSpecial, mealPlanPrice |
-| CommunityPost | id, userId, title, description, category, contactInfo |
-| Dispute | id, userId, pgId, title, description, status |
+| Auth | `POST /auth/register`, `POST /auth/login`, `GET /auth/users`*, `GET /auth/pending-admins`*, `PUT /auth/approve-admin/:id`*, `PUT /auth/status/:id`* |
+| PGs | `GET /pgs` (role-scoped visibility), `GET /pgs/:id`, `POST /pgs` (admin), `PUT /pgs/:id` (owner/superadmin), `DELETE /pgs/:id`* |
+| Bookings | `POST /bookings` (blocks duplicates, decrements vacant beds), `GET /bookings/me`, `GET /bookings/owner` (admin) |
+| Payments | `POST /payments`, `GET /payments/me`, `GET /payments/owner` (admin) |
+| Mess menus | `GET /mess`, `GET /mess/:pgId`, `PUT /mess` (admin) |
+| Community | `GET /community`, `POST /community` |
+| Reviews | `GET /reviews?pgId=`, `POST /reviews` |
+| Leaves | `POST /leaves`, `GET /leaves/me`, `GET /leaves/pg/:pgId`, `PUT /leaves/:id` |
+| Disputes | `POST /disputes`, `GET /disputes/me`, `GET /disputes`*, `PUT /disputes/:id`* |
+| Settings | `GET /settings`, `PUT /settings`* |
 
-### Payment Architecture
+\* superadmin only. Full request/response schemas: `http://localhost:4000/api/docs`.
 
-The app uses a **PaymentService** abstraction layer:
+### Data model highlights
 
-- **Current (Expo Go):** Simulated 2-second checkout with mock transaction IDs
-- **Production Ready:** Swap `USE_REAL_RAZORPAY = true` in `PaymentService.js`, install `react-native-razorpay`, and use `expo-dev-client`
+| Entity | Key fields |
+|--------|-----------|
+| User | email, passwordHash, type (`user` / `admin` / `pending_admin` / `superadmin`), status, businessRegNumber, ownershipProofRef |
+| PG | name, address, location `{latitude, longitude}`, rent, beds/rooms, facilities, images, adminId, status (`pending` / `approved` / `rejected` / `deactivated`) |
+| Booking | userId, pgId, monthlyRent, status (`active` / `completed` / `cancelled`), nextDueDate |
+| Payment | bookingId, userId, amount, commissionAmount, transactionId, method, month/year, status (`paid` / `failed` / `pending`) |
+| MessMenu | pgId, weeklyMenu (7 days × 3 meals), todaysSpecial, mealPlanPrice, isVegOnly |
+
+---
+
+## Architecture
+
+```
+Mobile app                              Backend
+─────────────────────────               ────────────────────────────
+AuthProvider ── login/register ───────► /api/auth (JWT issued)
+     │
+DataProvider ── loadAllData ──────────► /api/pgs, /community, /settings, /mess
+     │            (role-aware)          /bookings/me, /payments/me, /leaves/me ...
+     │                                  /bookings/owner, /payments/owner (admins)
+     ▼
+Screens consume useAuth() / useData()   routes → controllers → models (Mongoose)
+ApiClient attaches the stored JWT       auth middleware enforces roles per route
+```
+
+- **On-device storage is minimal by design** — only the session (JWT + user) and favorites live in AsyncStorage; everything else is fetched fresh from the API.
+- **Bed inventory is server-authoritative** — vacant-bed decrement happens inside the booking endpoint, not the client.
+- **PaymentService** simulates a Razorpay checkout (2-second flow, mock transaction IDs) so the full booking/rent flow works in Expo Go. Swap in `react-native-razorpay` + a dev client for real payments.
+
+---
+
+## Scripts
+
+| Where | Command | What it does |
+|-------|---------|--------------|
+| root | `npm start` | Expo dev server |
+| root | `npm run check` | Lint + frontend unit tests |
+| backend | `npm run dev` | API with nodemon |
+| backend | `npm run lint` | ESLint (flat config) |
+| backend | `npm test` | Node test runner against `MONGODB_TEST_URI` |
 
 ---
 
 ## Roadmap
 
-### High Priority
-- [ ] **Backend API** — Replace AsyncStorage with a real backend (Node.js/Express + MongoDB or Firebase)
-- [ ] **Real Authentication** — Email/password with JWT or Firebase Auth, including password hashing and validation
-- [ ] **Real Payment Gateway** — Integrate Razorpay/Stripe with server-side order verification
-- [ ] **Push Notifications** — Rent due reminders, booking confirmations, community post alerts
-
-### Medium Priority
-- [ ] **Room/Bed Selection** — Let users pick specific rooms and beds during booking
-- [ ] **Reviews & Ratings** — Full review system with text, photos, and verified-stay badges
-- [ ] **Mess Feedback** — Daily meal rating system for residents
-- [ ] **Rent Receipts** — Downloadable PDF receipts for each payment
-- [ ] **Multi-PG Admin** — Let admins manage multiple properties with a PG selector
-- [ ] **In-App Chat** — Direct messaging between tenants and admins
-
-### Low Priority / Nice to Have
-- [ ] **Dark Mode** — Theme toggle using the existing theme constants
-- [ ] **Localization** — Hindi, Marathi, and other regional language support
-- [ ] **Onboarding Flow** — First-time user walkthrough
-- [ ] **Analytics Dashboard** — Admin revenue charts, occupancy trends
-- [ ] **Maintenance Requests** — Ticket system for room repairs, complaints
-- [ ] **Referral System** — Earn credits for referring new tenants
-
----
-
-## Contributing
-
-Contributions are welcome! Here's how to get started:
-
-### 1. Fork & Clone
-
-```bash
-git fork <repo-url>
-git clone <your-fork-url>
-cd pg-finder-app
-npm install
-```
-
-### 2. Create a Branch
-
-```bash
-git checkout -b feature/your-feature-name
-```
-
-### 3. Code Guidelines
-
-- **Components** go in `src/components/common/` (reusable) or `src/components/cards/` (data cards)
-- **Screens** go in `src/screens/<role>/` (user, admin, superadmin, common)
-- **New routes** must be added to `src/navigation/routes.js` first, then registered in `AppNavigator.js`
-- **Styling** — use theme constants from `src/constants/theme.js`. Never hardcode colors or spacing
-- **State** — add new entities to `DataContext.js` with matching `StorageService` methods
-- **Hooks** — use `useAuth()` and `useData()` instead of direct `useContext()` calls
-- **No inline comments** explaining what code does — only document non-obvious trade-offs
-
-### 4. Commit & PR
-
-```bash
-git add .
-git commit -m "feat: add your feature description"
-git push origin feature/your-feature-name
-```
-
-Open a Pull Request with:
-- Summary of changes
-- Screenshots (for UI changes)
-- Test plan (how you verified it works)
-
-### Project Conventions
-
-| Convention | Example |
-|-----------|---------|
-| File naming | PascalCase for components/screens, camelCase for utils/hooks |
-| Route names | `ROUTES.USER.MY_PG` (constant from routes.js) |
-| Colors | `COLORS.primary` (never `'#FF385C'` directly) |
-| Spacing | `SPACING.lg` (never `16` directly) |
-| State persistence | Always use `persistAndSet` pattern in DataContext |
+- [ ] Push notifications (Expo push) — rent reminders, booking alerts for owners
+- [ ] Real Razorpay/Stripe integration with server-side order verification
+- [ ] Document upload (S3/Cloudinary) for owner verification instead of reference numbers
+- [ ] Room/bed-level selection during booking
+- [ ] In-app chat between tenants and owners
+- [ ] PDF rent receipts
+- [ ] Dark mode, localization (Hindi/Marathi), analytics dashboards
 
 ---
 
