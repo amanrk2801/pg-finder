@@ -7,7 +7,6 @@ on:
   push:
     branches:
       - main
-      - task-branch
 
 jobs:
   build_android:
