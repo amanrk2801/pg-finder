@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
     APP_META: 'appMeta',
     USER_SESSION: 'userSession',
     FAVORITES: 'favorites',
+    BOOKINGS_LAST_SEEN_AT: 'bookingsLastSeenAt',
 };
 
 const STORAGE_SCHEMA_VERSION = 2;
@@ -68,6 +69,9 @@ class StorageService {
 
     async getFavorites() { return this.getItem(STORAGE_KEYS.FAVORITES); }
     async saveFavorites(favorites) { return this.setItem(STORAGE_KEYS.FAVORITES, favorites); }
+
+    async getBookingsLastSeenAt() { return this.getItem(STORAGE_KEYS.BOOKINGS_LAST_SEEN_AT); }
+    async saveBookingsLastSeenAt(isoString) { return this.setItem(STORAGE_KEYS.BOOKINGS_LAST_SEEN_AT, isoString); }
 }
 
 export default new StorageService();

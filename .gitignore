@@ -49,3 +49,6 @@ _bmad/
 _bmad-output/
 .gemini/
 .claude/
+
+# uploaded images (served locally; use object storage in production)
+backend/uploads/

@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const { signToken } = require('../utils/jwt');
+const { saveBase64Image, buildUploadUrl } = require('./upload.controller');
 const { SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD } = require('../config/env');
 
 function toPublicUser(user) {
@@ -58,7 +59,7 @@ async function register(req, res, next) {
   try {
     const {
       email, password, type = 'user', name, phone,
-      businessRegNumber, ownershipProofRef,
+      panOrAadhaar, ownershipProofRef, businessRegNumber, verificationDocs,
     } = req.body;
 
     console.log(`[AUTH] Registration attempt: ${email} as ${type}`);
@@ -80,10 +81,26 @@ async function register(req, res, next) {
       return res.status(400).json({ message: 'Phone number must be exactly 10 digits' });
     }
 
-    if (type === 'admin' && (!businessRegNumber || !ownershipProofRef)) {
-      return res.status(400).json({
-        message: 'Business registration number and property ownership proof reference are required to onboard as an owner',
-      });
+    let docUrls = [];
+    if (type === 'admin') {
+      if (!panOrAadhaar || !/^[A-Za-z0-9]{4,20}$/.test(panOrAadhaar.trim())) {
+        return res.status(400).json({ message: 'A valid PAN or Aadhaar number is required to onboard as an owner' });
+      }
+      if (!ownershipProofRef || !ownershipProofRef.trim()) {
+        return res.status(400).json({ message: 'A property proof reference (electricity bill K-no. / property tax ID) is required' });
+      }
+      if (!Array.isArray(verificationDocs) || verificationDocs.length < 1) {
+        return res.status(400).json({ message: 'Please attach at least one verification document photo (ID or property proof)' });
+      }
+      if (verificationDocs.length > 3) {
+        return res.status(400).json({ message: 'At most 3 verification documents are allowed' });
+      }
+      try {
+        const filenames = await Promise.all(verificationDocs.map((d) => saveBase64Image(d)));
+        docUrls = filenames.map((f) => buildUploadUrl(req, f));
+      } catch (docErr) {
+        return res.status(docErr.status || 400).json({ message: `Document upload failed: ${docErr.message}` });
+      }
     }
 
     const assignedType = type === 'admin' ? 'pending_admin' : 'user';
@@ -102,7 +119,12 @@ async function register(req, res, next) {
       name: name?.trim(),
       phone,
       status: 'active',
-      ...(type === 'admin' ? { businessRegNumber, ownershipProofRef } : {}),
+      ...(type === 'admin' ? {
+        panOrAadhaar: panOrAadhaar.trim().toUpperCase(),
+        ownershipProofRef: ownershipProofRef.trim(),
+        businessRegNumber: businessRegNumber?.trim() || undefined,
+        verificationDocs: docUrls,
+      } : {}),
     });
 
     const token = signToken(user);

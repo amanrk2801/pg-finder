@@ -8,6 +8,7 @@ const communityPostSchema = new mongoose.Schema(
     description: { type: String, required: true },
     category: { type: String },
     contactInfo: { type: String },
+    status: { type: String, enum: ['Active', 'Closed'], default: 'Active' },
   },
   { timestamps: true },
 );

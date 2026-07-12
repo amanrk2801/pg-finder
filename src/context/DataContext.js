@@ -25,9 +25,21 @@ export const DataProvider = ({ children }) => {
     const [payments, setPayments] = useState([]);
     const [ownerBookings, setOwnerBookings] = useState([]);
     const [ownerPayments, setOwnerPayments] = useState([]);
+    const [ownerLeaveRequests, setOwnerLeaveRequests] = useState([]);
     const [messMenus, setMessMenus] = useState([]);
     const [leaveRequests, setLeaveRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [bookingsLastSeenAt, setBookingsLastSeenAt] = useState(null);
+
+    useEffect(() => {
+        StorageService.getBookingsLastSeenAt().then(setBookingsLastSeenAt);
+    }, []);
+
+    const markBookingsSeen = useCallback(async () => {
+        const now = new Date().toISOString();
+        await StorageService.saveBookingsLastSeenAt(now);
+        setBookingsLastSeenAt(now);
+    }, []);
 
     const persistAndSet = useCallback(async (saver, setter, newData) => {
         try {
@@ -64,16 +76,18 @@ export const DataProvider = ({ children }) => {
             const opts = token ? { token } : {};
             
             try {
-                const [p, c, s, m] = await Promise.all([
+                const [p, c, s, m, rv] = await Promise.all([
                     ApiClient.get('/pgs', opts),
                     ApiClient.get('/community'),
                     ApiClient.get('/settings'),
                     ApiClient.get('/mess'),
+                    ApiClient.get('/reviews').catch(() => []),
                 ]);
                 pgData = p || [];
                 postsData = c || [];
                 settingsData = s || DEFAULT_SETTINGS;
                 messMenusData = m || [];
+                reviewsData = rv || [];
             } catch (err) {
                 console.warn('Public/PG data fetch failed:', err.message);
             }
@@ -97,12 +111,14 @@ export const DataProvider = ({ children }) => {
                     }
 
                     if (userType === 'admin' || userType === 'superadmin') {
-                        const [ob, op] = await Promise.all([
+                        const [ob, op, ol] = await Promise.all([
                             ApiClient.get('/bookings/owner', opts).catch(() => []),
                             ApiClient.get('/payments/owner', opts).catch(() => []),
+                            ApiClient.get('/leaves/owner', opts).catch(() => []),
                         ]);
                         setOwnerBookings(ob || []);
                         setOwnerPayments(op || []);
+                        setOwnerLeaveRequests(ol || []);
                     }
                 } catch (err) {
                     console.warn('Private data fetch failed:', err.message);
@@ -192,8 +208,17 @@ export const DataProvider = ({ children }) => {
     }, []);
 
     const updateBooking = useCallback(async (bookingId, updates) => {
-        setBookings(prev => (prev || []).map(b => (b.id === bookingId || b._id === bookingId ? { ...b, ...updates } : b)));
-        return true;
+        try {
+            const updated = await ApiClient.put(`/bookings/${bookingId}`, updates);
+            if (updated) {
+                setBookings(prev => (prev || []).map(b => (b.id === bookingId || b._id === bookingId ? updated : b)));
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.warn('[DataContext] updateBooking Error:', err.message);
+            return false;
+        }
     }, []);
 
     const clearBookings = useCallback(async (userId) => {
@@ -235,13 +260,28 @@ export const DataProvider = ({ children }) => {
     }, []);
 
     const updateCommunityPost = useCallback(async (id, updatedData) => {
-        setCommunityPosts(prev => (prev || []).map(p => (p.id === id || p._id === id ? { ...p, ...updatedData } : p)));
-        return true;
+        try {
+            const updated = await ApiClient.put(`/community/${id}`, updatedData);
+            if (updated) {
+                setCommunityPosts(prev => (prev || []).map(p => (p.id === id || p._id === id ? { ...p, ...updated } : p)));
+                return true;
+            }
+            return false;
+        } catch (err) {
+            console.warn('[DataContext] updateCommunityPost Error:', err.message);
+            return false;
+        }
     }, []);
 
     const deleteCommunityPost = useCallback(async (id) => {
-        setCommunityPosts(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
-        return true;
+        try {
+            await ApiClient.delete(`/community/${id}`);
+            setCommunityPosts(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+            return true;
+        } catch (err) {
+            console.warn('[DataContext] deleteCommunityPost Error:', err.message);
+            return false;
+        }
     }, []);
 
     const addPendingPg = useCallback(async (pgData) => {
@@ -344,6 +384,15 @@ export const DataProvider = ({ children }) => {
         const updated = await ApiClient.put(`/leaves/${requestId}`, { status });
         if (updated) {
             setLeaveRequests(prev => (prev || []).map(r => (r.id === requestId || r._id === requestId ? updated : r)));
+            setOwnerLeaveRequests(prev => (prev || []).map(r => (
+                (r.id === requestId || r._id === requestId) ? { ...r, status } : r
+            )));
+            if (status === 'approved') {
+                const bookingId = updated.bookingId?._id || updated.bookingId?.id || updated.bookingId;
+                setOwnerBookings(prev => (prev || []).map(b => (
+                    (b.id === bookingId || b._id === bookingId) ? { ...b, status: 'completed' } : b
+                )));
+            }
             return true;
         }
         return false;
@@ -360,7 +409,7 @@ export const DataProvider = ({ children }) => {
     const contextValue = useMemo(() => ({
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
         settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
-        ownerBookings, ownerPayments,
+        ownerBookings, ownerPayments, ownerLeaveRequests, bookingsLastSeenAt, markBookingsSeen,
         getFavoritesForUser, addPg, updatePg, deletePg, deactivatePg, reactivatePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
@@ -371,7 +420,7 @@ export const DataProvider = ({ children }) => {
     }), [
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
         settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
-        ownerBookings, ownerPayments,
+        ownerBookings, ownerPayments, ownerLeaveRequests,
         getFavoritesForUser, addPg, updatePg, deletePg, deactivatePg, reactivatePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,

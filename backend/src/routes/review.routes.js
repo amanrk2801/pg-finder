@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const validateBody = require('../middleware/validate');
 const controller = require('../controllers/review.controller');
 
 const router = express.Router();
@@ -50,6 +51,15 @@ router.get('/', controller.listReviews);
  *       201:
  *         description: Created
  */
-router.post('/', auth(['user']), controller.createReview);
+router.post(
+  '/',
+  auth(['user']),
+  validateBody({
+    pgId: { type: 'string', required: true },
+    rating: { type: 'number', required: true, min: 1, max: 5 },
+    comment: { type: 'string', trim: true, max: 1000 },
+  }),
+  controller.createReview,
+);
 
 module.exports = router;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth, useData } from '../../hooks';
@@ -17,11 +17,18 @@ const CATEGORIES = [
 
 export default function CommunityScreen({ navigation }) {
     const { user } = useAuth();
-    const { communityPosts, deleteCommunityPost } = useData();
+    const { communityPosts, deleteCommunityPost, updateCommunityPost, loadAllData } = useData();
 
     const [searchQuery, setSearchQuery] = useState('');
     const [filteredPosts, setFilteredPosts] = useState(communityPosts || []);
     const [selectedFilter, setSelectedFilter] = useState('All');
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const onRefresh = async () => {
+        setIsRefreshing(true);
+        await loadAllData();
+        setIsRefreshing(false);
+    };
 
     useEffect(() => {
         let filtered = communityPosts || [];
@@ -69,7 +76,11 @@ export default function CommunityScreen({ navigation }) {
                 />
             </View>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={styles.content}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
+            >
                 <Text style={styles.resultsText}>
                     {(filteredPosts || []).length} {(filteredPosts || []).length === 1 ? 'Post' : 'Posts'} found
                 </Text>
@@ -87,6 +98,7 @@ export default function CommunityScreen({ navigation }) {
                             post={post}
                             currentUserId={user?.id}
                             onDelete={deleteCommunityPost}
+                            onToggleStatus={(id, status) => updateCommunityPost(id, { status })}
                         />
                     ))
                 )}

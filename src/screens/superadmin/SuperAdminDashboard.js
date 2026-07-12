@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { 
-    View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, 
-    StatusBar, ScrollView, TextInput, RefreshControl, Dimensions 
+import {
+    View, Text, StyleSheet, FlatList, TouchableOpacity, Alert,
+    StatusBar, ScrollView, TextInput, RefreshControl, Dimensions, Image, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +35,8 @@ export default function SuperAdminDashboard() {
     const [pendingAdmins, setPendingAdmins] = useState([]);
     const [allPgs, setAllPgs] = useState([]);
     const [newFee, setNewFee] = useState(settings?.platformFee?.toString() || '5');
+    const [previewDocUrl, setPreviewDocUrl] = useState(null);
+    const [selectedUser, setSelectedUser] = useState(null);
 
     const fetchAllPgs = async () => {
         try {
@@ -118,6 +120,19 @@ export default function SuperAdminDashboard() {
                 const success = await approvePendingPg(id);
                 if (success) {
                     Alert.alert("Success", "Property is now live for users.");
+                    onRefresh();
+                }
+            }}
+        ]);
+    };
+
+    const handleRejectPg = (id, name) => {
+        Alert.alert("Reject PG", `Reject "${name}"? It will not be published to users.`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Reject", style: "destructive", onPress: async () => {
+                const success = await rejectPendingPg(id);
+                if (success) {
+                    Alert.alert("Rejected", "Property has been rejected.");
                     onRefresh();
                 }
             }}
@@ -217,18 +232,58 @@ export default function SuperAdminDashboard() {
                                             <Text style={styles.emptyText}>All properties verified</Text>
                                         </View>
                                     ) : (
-                                        (pendingPgs || []).map(item => (
-                                            <View key={item.id || item._id} style={styles.requestCard}>
-                                                <View style={styles.requestInfo}>
-                                                    <Text style={styles.requestTitle}>{item.name}</Text>
-                                                    <Text style={styles.requestSub}>{item.address}</Text>
-                                                    <Text style={styles.requestPrice}>Monthly Rent: ₹{item.rent}</Text>
+                                        (pendingPgs || []).map(item => {
+                                            const id = item.id || item._id;
+                                            const photo = (item.images || []).find(u => typeof u === 'string' && u.startsWith('http'));
+                                            return (
+                                                <View key={id} style={styles.verifyCard}>
+                                                    <View style={styles.verifyTop}>
+                                                        {photo ? (
+                                                            <TouchableOpacity onPress={() => setPreviewDocUrl(photo)} activeOpacity={0.8}>
+                                                                <Image source={{ uri: photo }} style={styles.verifyThumb} />
+                                                            </TouchableOpacity>
+                                                        ) : (
+                                                            <View style={[styles.verifyThumb, styles.verifyThumbEmpty]}>
+                                                                <Ionicons name="image-outline" size={22} color={COLORS.gray} />
+                                                            </View>
+                                                        )}
+                                                        <View style={styles.verifyInfo}>
+                                                            <Text style={styles.requestTitle} numberOfLines={1}>{item.name}</Text>
+                                                            <Text style={styles.requestSub} numberOfLines={2}>{item.address}</Text>
+                                                            {item.createdAt && (
+                                                                <Text style={styles.verifyDate}>
+                                                                    Submitted {new Date(item.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                                                </Text>
+                                                            )}
+                                                        </View>
+                                                    </View>
+
+                                                    <View style={styles.verifyMetaRow}>
+                                                        <View style={styles.verifyMetaChip}>
+                                                            <Text style={styles.verifyMetaText}>₹{(item.rent || 0).toLocaleString()}/mo</Text>
+                                                        </View>
+                                                        <View style={styles.verifyMetaChip}>
+                                                            <Text style={styles.verifyMetaText}>{item.totalBeds || 0} beds</Text>
+                                                        </View>
+                                                        <View style={styles.verifyMetaChip}>
+                                                            <Text style={styles.verifyMetaText}>{item.totalRooms || 0} rooms</Text>
+                                                        </View>
+                                                        <View style={styles.verifyMetaChip}>
+                                                            <Text style={styles.verifyMetaText}>{(item.gender || 'unisex').toUpperCase()}</Text>
+                                                        </View>
+                                                    </View>
+
+                                                    <View style={styles.verifyActions}>
+                                                        <TouchableOpacity style={styles.rejectAction} onPress={() => handleRejectPg(id, item.name)}>
+                                                            <Text style={[styles.actionText, { color: COLORS.error }]}>REJECT</Text>
+                                                        </TouchableOpacity>
+                                                        <TouchableOpacity style={[styles.approveAction, { flex: 1, alignItems: 'center' }]} onPress={() => handleApprovePg(id, item.name)}>
+                                                            <Text style={styles.actionText}>VERIFY & PUBLISH</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
                                                 </View>
-                                                <TouchableOpacity style={styles.approveAction} onPress={() => handleApprovePg(item.id || item._id, item.name)}>
-                                                    <Text style={styles.actionText}>VERIFY</Text>
-                                                </TouchableOpacity>
-                                            </View>
-                                        ))
+                                            );
+                                        })
                                     )}
                                 </View>
                             )}
@@ -298,8 +353,20 @@ export default function SuperAdminDashboard() {
                                                 <View style={styles.requestInfo}>
                                                     <Text style={styles.requestTitle}>{item.email}</Text>
                                                     <Text style={styles.requestSub}>Contact: {item.phone || 'N/A'}</Text>
-                                                    <Text style={styles.requestSub}>Business Reg: {item.businessRegNumber || 'Not provided'}</Text>
-                                                    <Text style={styles.requestSub}>Ownership Proof: {item.ownershipProofRef || 'Not provided'}</Text>
+                                                    <Text style={styles.requestSub}>PAN/Aadhaar: {item.panOrAadhaar || 'Not provided'}</Text>
+                                                    <Text style={styles.requestSub}>Property Proof: {item.ownershipProofRef || 'Not provided'}</Text>
+                                                    {item.businessRegNumber ? (
+                                                        <Text style={styles.requestSub}>GST/Udyam: {item.businessRegNumber}</Text>
+                                                    ) : null}
+                                                    {(item.verificationDocs || []).length > 0 && (
+                                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                                                            {item.verificationDocs.map((docUrl, di) => (
+                                                                <TouchableOpacity key={`${docUrl}-${di}`} onPress={() => setPreviewDocUrl(docUrl)} activeOpacity={0.8}>
+                                                                    <Image source={{ uri: docUrl }} style={styles.docThumb} />
+                                                                </TouchableOpacity>
+                                                            ))}
+                                                        </ScrollView>
+                                                    )}
                                                     <View style={styles.ownerBadge}><Text style={styles.ownerBadgeText}>Role: Admin</Text></View>
                                                 </View>
                                                 <View style={styles.dualActions}>
@@ -347,8 +414,14 @@ export default function SuperAdminDashboard() {
                             {activeTab === 'users' && (
                                 <View>
                                     <Text style={styles.sectionTitle}>User Directory</Text>
+                                    <Text style={styles.sectionHint}>Tap a user to view their full record and submitted documents</Text>
                                     {(users || []).map(item => (
-                                        <View key={item.id || item._id} style={styles.userListItem}>
+                                        <TouchableOpacity
+                                            key={item.id || item._id}
+                                            style={styles.userListItem}
+                                            onPress={() => setSelectedUser(item)}
+                                            activeOpacity={0.8}
+                                        >
                                             <View style={styles.userIcon}>
                                                 <Text style={styles.userInitials}>{(item.name || item.email || 'U').charAt(0).toUpperCase()}</Text>
                                             </View>
@@ -356,15 +429,15 @@ export default function SuperAdminDashboard() {
                                                 <Text style={styles.userName}>{item.email}</Text>
                                                 <Text style={styles.userRole}>{item.type.toUpperCase()} · {item.status}</Text>
                                             </View>
-                                            <TouchableOpacity 
-                                                style={[styles.statusToggle, item.status === 'suspended' && { borderColor: COLORS.secondary }]} 
+                                            <TouchableOpacity
+                                                style={[styles.statusToggle, item.status === 'suspended' && { borderColor: COLORS.secondary }]}
                                                 onPress={() => toggleUserStatus(item.id || item._id)}
                                             >
                                                 <Text style={[styles.statusToggleText, item.status === 'suspended' && { color: COLORS.secondary }]}>
                                                     {item.status === 'active' ? 'SUSPEND' : 'ACTIVATE'}
                                                 </Text>
                                             </TouchableOpacity>
-                                        </View>
+                                        </TouchableOpacity>
                                     ))}
                                 </View>
                             )}
@@ -401,6 +474,75 @@ export default function SuperAdminDashboard() {
                     refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />}
                 />
             </View>
+
+            <Modal visible={!!selectedUser} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setSelectedUser(null)}>
+                <SafeAreaView style={styles.userDetailContainer}>
+                    <View style={styles.userDetailHeader}>
+                        <Text style={styles.userDetailTitle}>User Record</Text>
+                        <TouchableOpacity onPress={() => setSelectedUser(null)} style={styles.userDetailClose}>
+                            <Ionicons name="close" size={24} color={COLORS.black} />
+                        </TouchableOpacity>
+                    </View>
+                    {selectedUser && (
+                        <ScrollView contentContainerStyle={styles.userDetailScroll}>
+                            <View style={styles.userDetailCard}>
+                                <Text style={styles.userDetailSection}>Identity</Text>
+                                {[
+                                    ['Full Name', selectedUser.name || 'Not provided'],
+                                    ['Email', selectedUser.email],
+                                    ['Phone', selectedUser.phone || 'Not provided'],
+                                    ['Role', (selectedUser.type || '').toUpperCase()],
+                                    ['Account Status', (selectedUser.status || '').toUpperCase()],
+                                    ['Joined', selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown'],
+                                    ['User ID', selectedUser.id || selectedUser._id],
+                                ].map(([label, value]) => (
+                                    <View key={label} style={styles.userDetailRow}>
+                                        <Text style={styles.userDetailLabel}>{label}</Text>
+                                        <Text style={styles.userDetailValue} selectable>{value}</Text>
+                                    </View>
+                                ))}
+                            </View>
+
+                            {(selectedUser.type === 'admin' || selectedUser.type === 'pending_admin') && (
+                                <View style={styles.userDetailCard}>
+                                    <Text style={styles.userDetailSection}>Owner Verification (for legal/police reference)</Text>
+                                    {[
+                                        ['PAN / Aadhaar', selectedUser.panOrAadhaar || 'Not provided'],
+                                        ['Property Proof Ref', selectedUser.ownershipProofRef || 'Not provided'],
+                                        ['GST / Udyam', selectedUser.businessRegNumber || 'Not provided'],
+                                    ].map(([label, value]) => (
+                                        <View key={label} style={styles.userDetailRow}>
+                                            <Text style={styles.userDetailLabel}>{label}</Text>
+                                            <Text style={styles.userDetailValue} selectable>{value}</Text>
+                                        </View>
+                                    ))}
+
+                                    <Text style={[styles.userDetailLabel, { marginTop: SPACING.md, marginBottom: 6 }]}>Submitted Documents</Text>
+                                    {(selectedUser.verificationDocs || []).length > 0 ? (
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                            {selectedUser.verificationDocs.map((docUrl, di) => (
+                                                <TouchableOpacity key={`${docUrl}-${di}`} onPress={() => setPreviewDocUrl(docUrl)} activeOpacity={0.8}>
+                                                    <Image source={{ uri: docUrl }} style={styles.docThumbLarge} />
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    ) : (
+                                        <Text style={styles.userDetailValue}>No documents on file (registered before document verification was required)</Text>
+                                    )}
+                                </View>
+                            )}
+                            <View style={{ height: 40 }} />
+                        </ScrollView>
+                    )}
+                </SafeAreaView>
+            </Modal>
+
+            <Modal visible={!!previewDocUrl} transparent animationType="fade" onRequestClose={() => setPreviewDocUrl(null)}>
+                <TouchableOpacity style={styles.docPreviewBackdrop} activeOpacity={1} onPress={() => setPreviewDocUrl(null)}>
+                    {previewDocUrl && <Image source={{ uri: previewDocUrl }} style={styles.docPreviewImage} resizeMode="contain" />}
+                    <Text style={styles.docPreviewHint}>Tap anywhere to close</Text>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -447,8 +589,37 @@ const styles = StyleSheet.create({
     rejectSmall: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: COLORS.error, justifyContent: 'center', alignItems: 'center' },
     approveSmall: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
     ownerBadge: { alignSelf: 'flex-start', backgroundColor: '#F0F2F5', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginTop: 5 },
+    verifyCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 16, marginBottom: 15, ...SHADOWS.small },
+    verifyTop: { flexDirection: 'row', marginBottom: 12 },
+    verifyThumb: { width: 64, height: 64, borderRadius: 12, marginRight: 12, backgroundColor: '#F0F2F5' },
+    verifyThumbEmpty: { justifyContent: 'center', alignItems: 'center' },
+    verifyInfo: { flex: 1 },
+    verifyDate: { fontSize: 11, color: COLORS.grayLight, marginTop: 2 },
+    verifyMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+    verifyMetaChip: { backgroundColor: '#F0F2F5', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+    verifyMetaText: { fontSize: 11, fontWeight: '700', color: COLORS.gray },
+    verifyActions: { flexDirection: 'row', gap: 10 },
+    docThumb: { width: 56, height: 56, borderRadius: 8, marginRight: 8, backgroundColor: '#F0F2F5', borderWidth: 1, borderColor: COLORS.borderLight },
+    docThumbLarge: { width: 100, height: 100, borderRadius: 10, marginRight: 10, backgroundColor: '#F0F2F5', borderWidth: 1, borderColor: COLORS.borderLight },
+    sectionHint: { fontSize: 12, color: COLORS.gray, marginTop: 4, marginBottom: 14 },
+    userDetailContainer: { flex: 1, backgroundColor: '#F0F2F5' },
+    userDetailHeader: {
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        padding: SPACING.lg, backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: '#E5E7EB',
+    },
+    userDetailTitle: { fontSize: 18, fontWeight: '800', color: COLORS.black },
+    userDetailClose: { padding: 4 },
+    userDetailScroll: { padding: SPACING.lg },
+    userDetailCard: { backgroundColor: COLORS.white, borderRadius: 16, padding: SPACING.lg, marginBottom: SPACING.lg, ...SHADOWS.small },
+    userDetailSection: { fontSize: 13, fontWeight: '800', color: COLORS.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: SPACING.md },
+    userDetailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', gap: 12 },
+    userDetailLabel: { fontSize: 13, color: COLORS.gray },
+    userDetailValue: { fontSize: 13, fontWeight: '600', color: COLORS.black, flexShrink: 1, textAlign: 'right' },
+    docPreviewBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    docPreviewImage: { width: '100%', height: '80%' },
+    docPreviewHint: { color: 'rgba(255,255,255,0.7)', marginTop: 12, fontSize: 12 },
     ownerBadgeText: { fontSize: 10, color: COLORS.gray, fontWeight: 'bold' },
-    revenueMainCard: { borderRadius: 25, padding: 25, marginBottom: 25, ...SHADOWS.medium },
+    revenueMainCard: { borderRadius: 25, padding: 25, marginTop: 14, marginBottom: 25, ...SHADOWS.medium },
     revLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: '600' },
     revAmount: { color: COLORS.white, fontSize: 36, fontWeight: '900', marginVertical: 10 },
     revFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
@@ -463,7 +634,7 @@ const styles = StyleSheet.create({
     userRole: { fontSize: 12, color: COLORS.gray, marginTop: 2 },
     statusToggle: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.error },
     statusToggleText: { fontSize: 10, fontWeight: 'bold', color: COLORS.error },
-    settingsCard: { backgroundColor: COLORS.white, borderRadius: 20, padding: 20, ...SHADOWS.small },
+    settingsCard: { backgroundColor: COLORS.white, borderRadius: 20, padding: 20, marginTop: 14, ...SHADOWS.small },
     settingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 25 },
     settingLabel: { fontSize: 15, fontWeight: 'bold', color: COLORS.black },
     settingSub: { fontSize: 12, color: COLORS.gray },

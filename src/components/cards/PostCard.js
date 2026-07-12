@@ -11,8 +11,24 @@ import {
     TYPOGRAPHY,
 } from "../../constants/theme";
 
-export default function PostCard({ post, currentUserId, onDelete }) {
+function timeAgo(dateInput) {
+    const date = new Date(dateInput);
+    if (Number.isNaN(date.getTime())) return '';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `${days}d ago`;
+    return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export default function PostCard({ post, currentUserId, onDelete, onToggleStatus }) {
     const isOwner = post.userId === currentUserId;
+    const isClosed = post.status === 'Closed';
+    const postId = post.id || post._id;
 
     const handleContact = () => {
         const digits = (post.contactInfo || '').replace(/\D/g, '');
@@ -28,14 +44,14 @@ export default function PostCard({ post, currentUserId, onDelete }) {
         );
     };
 
-    const postDate = new Date(post.date || post.createdAt);
-    const formattedDate = Number.isNaN(postDate.getTime())
-        ? ''
-        : postDate.toLocaleDateString(undefined, {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        });
+    const handleDelete = () => {
+        Alert.alert('Delete Post', 'Remove this post permanently?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => onDelete(postId) },
+        ]);
+    };
+
+    const formattedDate = timeAgo(post.date || post.createdAt);
 
     const getCategoryIcon = (category) => {
         switch (category) {
@@ -65,20 +81,27 @@ export default function PostCard({ post, currentUserId, onDelete }) {
     };
 
     return (
-        <View style={styles.card}>
+        <View style={[styles.card, isClosed && styles.cardClosed]}>
             <View style={styles.header}>
                 <View style={styles.userInfo}>
-                    <View style={styles.avatar}>
+                    <View style={[styles.avatar, { backgroundColor: getCategoryTextColor(post.category) }]}>
                         <Text style={styles.avatarText}>{(post.authorName || 'U').charAt(0).toUpperCase()}</Text>
                     </View>
                     <View>
-                        <Text style={styles.authorName}>{post.authorName || 'Unknown User'}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={styles.authorName}>{post.authorName || 'Unknown User'}</Text>
+                            {isOwner && (
+                                <View style={styles.youBadge}>
+                                    <Text style={styles.youBadgeText}>YOU</Text>
+                                </View>
+                            )}
+                        </View>
                         <Text style={styles.date}>{formattedDate}</Text>
                     </View>
                 </View>
 
                 {isOwner && onDelete && (
-                    <TouchableOpacity onPress={() => onDelete(post.id)} style={styles.deleteButton}>
+                    <TouchableOpacity onPress={handleDelete} style={styles.deleteButton}>
                         <Ionicons name="trash-outline" size={18} color={COLORS.error} />
                     </TouchableOpacity>
                 )}
@@ -86,24 +109,42 @@ export default function PostCard({ post, currentUserId, onDelete }) {
 
             <Text style={styles.title}>{post.title}</Text>
 
-            <View style={[styles.badge, { backgroundColor: getCategoryColor(post.category) }]}>
-                <Ionicons name={getCategoryIcon(post.category)} size={12} color={getCategoryTextColor(post.category)} style={{ marginRight: 4 }} />
-                <Text style={[styles.badgeText, { color: getCategoryTextColor(post.category) }]}>{post.category}</Text>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+                <View style={[styles.badge, { backgroundColor: getCategoryColor(post.category) }]}>
+                    <Ionicons name={getCategoryIcon(post.category)} size={12} color={getCategoryTextColor(post.category)} style={{ marginRight: 4 }} />
+                    <Text style={[styles.badgeText, { color: getCategoryTextColor(post.category) }]}>{post.category}</Text>
+                </View>
+                {isClosed && (
+                    <View style={[styles.badge, { backgroundColor: COLORS.backgroundGray }]}>
+                        <Ionicons name="lock-closed" size={11} color={COLORS.gray} style={{ marginRight: 4 }} />
+                        <Text style={[styles.badgeText, { color: COLORS.gray }]}>{post.category === 'Sale' ? 'SOLD' : 'CLOSED'}</Text>
+                    </View>
+                )}
             </View>
 
             <Text style={styles.description}>{post.description}</Text>
 
             <View style={styles.footer}>
-                <View style={styles.statusContainer}>
-                    <Text style={styles.statusLabel}>Status: </Text>
-                    <Text style={[styles.statusValue, { color: post.status === 'Active' ? '#4CAF50' : COLORS.gray }]}>
-                        {post.status}
-                    </Text>
-                </View>
+                {isOwner && onToggleStatus ? (
+                    <TouchableOpacity
+                        style={styles.toggleStatusBtn}
+                        onPress={() => onToggleStatus(postId, isClosed ? 'Active' : 'Closed')}
+                    >
+                        <Ionicons name={isClosed ? 'refresh-outline' : 'checkmark-done-outline'} size={14} color={COLORS.gray} />
+                        <Text style={styles.toggleStatusText}>
+                            {isClosed ? 'Reopen' : (post.category === 'Sale' ? 'Mark as Sold' : 'Mark as Closed')}
+                        </Text>
+                    </TouchableOpacity>
+                ) : (
+                    <View />
+                )}
 
-                <TouchableOpacity style={styles.contactButton} onPress={handleContact}>
-                    <Text style={styles.contactButtonText}>WhatsApp</Text>
-                </TouchableOpacity>
+                {!isClosed && !isOwner && (
+                    <TouchableOpacity style={styles.contactButton} onPress={handleContact}>
+                        <Ionicons name="logo-whatsapp" size={14} color={COLORS.white} style={{ marginRight: 4 }} />
+                        <Text style={styles.contactButtonText}>WhatsApp</Text>
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );
@@ -185,24 +226,26 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: COLORS.borderLight,
     },
-    statusContainer: {
+    contactButton: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    statusLabel: {
-        fontSize: FONT_SIZES.sm,
-        color: COLORS.gray,
-    },
-    statusValue: {
-        fontSize: FONT_SIZES.sm,
-        fontWeight: FONT_WEIGHTS.bold,
-    },
-    contactButton: {
-        backgroundColor: COLORS.primary,
+        backgroundColor: '#25D366',
         paddingHorizontal: SPACING.lg,
         paddingVertical: SPACING.sm,
         borderRadius: BORDER_RADIUS.md,
     },
+    cardClosed: { opacity: 0.65 },
+    youBadge: {
+        backgroundColor: COLORS.backgroundPink, paddingHorizontal: 6, paddingVertical: 1,
+        borderRadius: BORDER_RADIUS.sm,
+    },
+    youBadgeText: { fontSize: 9, fontWeight: FONT_WEIGHTS.bold, color: COLORS.primary },
+    toggleStatusBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        paddingVertical: SPACING.xs, paddingHorizontal: SPACING.sm,
+        borderRadius: BORDER_RADIUS.sm, borderWidth: 1, borderColor: COLORS.border,
+    },
+    toggleStatusText: { fontSize: FONT_SIZES.xs, color: COLORS.gray, fontWeight: FONT_WEIGHTS.semibold },
     contactButtonText: {
         color: COLORS.white,
         fontWeight: FONT_WEIGHTS.bold,

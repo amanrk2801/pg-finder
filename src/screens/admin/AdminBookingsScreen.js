@@ -1,15 +1,28 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, StatusBar, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../../hooks';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPOGRAPHY } from '../../constants/theme';
 
-const NEW_WINDOW_MS = 24 * 60 * 60 * 1000; // highlight bookings from the last 24h as "new"
+const NEW_WINDOW_MS = 24 * 60 * 60 * 1000; // fallback window before anything has ever been "seen"
 
 export default function AdminBookingsScreen() {
-  const { ownerBookings, ownerPayments, loadAllData } = useData();
+  const { ownerBookings, ownerPayments, loadAllData, bookingsLastSeenAt, markBookingsSeen } = useData();
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Snapshot the "seen" threshold on first render of this visit, so cards don't
+  // lose their NEW badge mid-visit once markBookingsSeen() below updates it.
+  const viewThresholdRef = useRef(
+    bookingsLastSeenAt ? new Date(bookingsLastSeenAt).getTime() : Date.now() - NEW_WINDOW_MS,
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      markBookingsSeen();
+    }, [markBookingsSeen]),
+  );
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -25,7 +38,7 @@ export default function AdminBookingsScreen() {
 
   const isNew = (booking) => {
     const created = new Date(booking.createdAt).getTime();
-    return !Number.isNaN(created) && Date.now() - created < NEW_WINDOW_MS;
+    return !Number.isNaN(created) && created > viewThresholdRef.current;
   };
 
   const newCount = (ownerBookings || []).filter(isNew).length;
@@ -37,7 +50,7 @@ export default function AdminBookingsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Bookings</Text>
         <Text style={styles.subtitle}>
-          {newCount > 0 ? `${newCount} new booking${newCount > 1 ? 's' : ''} in the last 24h` : 'All bookings across your PGs'}
+          {newCount > 0 ? `${newCount} new booking${newCount > 1 ? 's' : ''} since your last visit` : 'All bookings across your PGs'}
         </Text>
       </View>
 

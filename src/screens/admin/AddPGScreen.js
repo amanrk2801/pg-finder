@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useAuth, useData } from '../../hooks';
+import UploadService from '../../services/UploadService';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS } from '../../constants/theme';
 import { CustomInput, CustomButton, ScreenHeader, ImagePickerSection, PillSelector, GenderSelector } from '../../components/common';
 import {
@@ -61,6 +62,8 @@ export default function AddPGScreen({ navigation }) {
         }
     };
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleSubmit = async () => {
         const { isValid, errors: newErrors } = validatePGForm(formData);
         if (!isValid) { setErrors(newErrors); return; }
@@ -70,25 +73,34 @@ export default function AddPGScreen({ navigation }) {
             return;
         }
 
-        const pgData = {
-            ...formData,
-            totalRooms: parseInt(formData.totalRooms),
-            occupiedRooms: parseInt(formData.occupiedRooms || 0),
-            totalBeds: parseInt(formData.totalBeds || 0),
-            vacantBeds: parseInt(formData.vacantBeds || 0),
-            rent: parseInt(formData.rent || 0),
-            facilities: facilitiesMapToArray(facilities),
-            safetyMeasures: safetyMapToArray(safetyMeasures),
-            adminId: user.id,
-            location,
-            images: selectedImages.length > 0 ? selectedImages : DEFAULT_PLACEHOLDER_IMAGES,
-            rating: 0,
-            reviews: 0,
-        };
+        setIsSubmitting(true);
+        try {
+            const uploadedImages = await UploadService.uploadLocalImages(selectedImages);
 
-        await addPg(pgData);
-        Alert.alert('Success', 'Property added successfully!');
-        navigation.goBack();
+            const pgData = {
+                ...formData,
+                totalRooms: parseInt(formData.totalRooms),
+                occupiedRooms: parseInt(formData.occupiedRooms || 0),
+                totalBeds: parseInt(formData.totalBeds || 0),
+                vacantBeds: parseInt(formData.vacantBeds || 0),
+                rent: parseInt(formData.rent || 0),
+                facilities: facilitiesMapToArray(facilities),
+                safetyMeasures: safetyMapToArray(safetyMeasures),
+                adminId: user.id,
+                location,
+                images: uploadedImages.length > 0 ? uploadedImages : DEFAULT_PLACEHOLDER_IMAGES,
+                rating: 0,
+                reviews: 0,
+            };
+
+            await addPg(pgData);
+            Alert.alert('Success', 'Property added successfully!');
+            navigation.goBack();
+        } catch (err) {
+            Alert.alert('Error', 'Could not upload photos or save the property. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -193,7 +205,13 @@ export default function AddPGScreen({ navigation }) {
                     onToggle={(key) => setSafetyMeasures(prev => ({ ...prev, [key]: !prev[key] }))}
                 />
 
-                <CustomButton title="Publish Property" onPress={handleSubmit} style={{ marginTop: SPACING.xl }} />
+                <CustomButton
+                    title={isSubmitting ? 'Publishing...' : 'Publish Property'}
+                    onPress={handleSubmit}
+                    loading={isSubmitting}
+                    disabled={isSubmitting}
+                    style={{ marginTop: SPACING.xl }}
+                />
                 <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>

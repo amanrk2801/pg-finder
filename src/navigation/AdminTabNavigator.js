@@ -30,10 +30,13 @@ const ADMIN_TAB_ICONS = {
 };
 
 export default function AdminTabNavigator() {
-  const { ownerBookings } = useData();
+  const { ownerBookings, bookingsLastSeenAt } = useData();
+  const sinceTime = bookingsLastSeenAt
+    ? new Date(bookingsLastSeenAt).getTime()
+    : Date.now() - NEW_WINDOW_MS;
   const newBookingsCount = (ownerBookings || []).filter((b) => {
     const created = new Date(b.createdAt).getTime();
-    return !Number.isNaN(created) && Date.now() - created < NEW_WINDOW_MS;
+    return !Number.isNaN(created) && created > sinceTime;
   }).length;
 
   return (

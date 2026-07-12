@@ -11,8 +11,11 @@ const userSchema = new mongoose.Schema(
     },
     name: { type: String },
     phone: { type: String },
-    businessRegNumber: { type: String },
+    // Owner verification (admin accounts only)
+    panOrAadhaar: { type: String },
     ownershipProofRef: { type: String },
+    businessRegNumber: { type: String }, // optional — most small PG owners have none
+    verificationDocs: [String], // uploaded document photo URLs
     status: {
       type: String,
       enum: ['active', 'suspended'],

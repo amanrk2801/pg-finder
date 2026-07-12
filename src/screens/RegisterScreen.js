@@ -24,7 +24,7 @@ import {
   SHADOWS,
   TYPOGRAPHY,
 } from '../constants/theme';
-import { CustomInput, CustomButton } from '../components/common';
+import { CustomInput, CustomButton, ImagePickerSection } from '../components/common';
 
 const { height } = Dimensions.get('window');
 
@@ -35,8 +35,10 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedType, setSelectedType] = useState('user'); // Default to user
-  const [businessRegNumber, setBusinessRegNumber] = useState('');
+  const [panOrAadhaar, setPanOrAadhaar] = useState('');
   const [ownershipProofRef, setOwnershipProofRef] = useState('');
+  const [businessRegNumber, setBusinessRegNumber] = useState('');
+  const [verificationDocs, setVerificationDocs] = useState([]);
   const [isRegistering, setIsRegistering] = useState(false);
   const { register } = useAuth();
 
@@ -45,8 +47,9 @@ export default function RegisterScreen({ navigation }) {
   const phoneInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const confirmPasswordInputRef = useRef(null);
-  const businessRegInputRef = useRef(null);
+  const panInputRef = useRef(null);
   const ownershipProofInputRef = useRef(null);
+  const businessRegInputRef = useRef(null);
 
   const isValidEmail = (value) => /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
 
@@ -78,9 +81,19 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
-    if (selectedType === 'admin' && (!businessRegNumber.trim() || !ownershipProofRef.trim())) {
-      Alert.alert('Error', 'Please provide your business registration number and a property ownership proof reference. This helps us verify PG owners before listing goes live.');
-      return;
+    if (selectedType === 'admin') {
+      if (!/^[A-Za-z0-9]{4,20}$/.test(panOrAadhaar.trim())) {
+        Alert.alert('Error', 'Please enter a valid PAN (e.g. ABCDE1234F) or Aadhaar number.');
+        return;
+      }
+      if (!ownershipProofRef.trim()) {
+        Alert.alert('Error', 'Please provide a property proof reference — electricity bill K-number or property tax ID.');
+        return;
+      }
+      if (verificationDocs.length < 1) {
+        Alert.alert('Error', 'Please attach at least one document photo (your ID or property proof) for verification.');
+        return;
+      }
     }
 
     Keyboard.dismiss();
@@ -89,8 +102,10 @@ export default function RegisterScreen({ navigation }) {
     try {
       // Pass the selectedType (user or admin)
       const success = await register(normalizedEmail, password, selectedType, name, phone, {
-        businessRegNumber: businessRegNumber.trim(),
+        panOrAadhaar: panOrAadhaar.trim(),
         ownershipProofRef: ownershipProofRef.trim(),
+        businessRegNumber: businessRegNumber.trim(),
+        verificationDocs,
       });
       if (!success) {
         Alert.alert('Registration failed', 'Unable to create your account. Please try again.');
@@ -105,7 +120,7 @@ export default function RegisterScreen({ navigation }) {
     } finally {
       setIsRegistering(false);
     }
-  }, [email, password, confirmPassword, name, phone, selectedType, businessRegNumber, ownershipProofRef, register]);
+  }, [email, password, confirmPassword, name, phone, selectedType, panOrAadhaar, ownershipProofRef, businessRegNumber, verificationDocs, register]);
 
   return (
     <KeyboardAvoidingView
@@ -213,34 +228,51 @@ export default function RegisterScreen({ navigation }) {
             icon="lock-closed-outline"
             secureTextEntry
             returnKeyType={selectedType === 'admin' ? 'next' : 'done'}
-            onSubmitEditing={() => (selectedType === 'admin' ? businessRegInputRef.current?.focus() : handleRegister())}
+            onSubmitEditing={() => (selectedType === 'admin' ? panInputRef.current?.focus() : handleRegister())}
           />
 
           {selectedType === 'admin' && (
             <>
               <Text style={styles.verificationNote}>
-                Owner verification: we need these details to confirm you're authorized to list this property. Your account stays pending until a Super Admin reviews them.
+                Owner verification: we need these details to confirm you're authorized to list a property. Your account stays pending until a Super Admin reviews them.
               </Text>
               <CustomInput
-                ref={businessRegInputRef}
-                label="Business Registration Number"
-                placeholder="e.g., GST/Udyam/Trade License No."
-                value={businessRegNumber}
-                onChangeText={setBusinessRegNumber}
-                icon="document-text-outline"
+                ref={panInputRef}
+                label="PAN or Aadhaar Number *"
+                placeholder="e.g., ABCDE1234F"
+                value={panOrAadhaar}
+                onChangeText={setPanOrAadhaar}
+                icon="card-outline"
                 autoCapitalize="characters"
                 returnKeyType="next"
                 onSubmitEditing={() => ownershipProofInputRef.current?.focus()}
               />
               <CustomInput
                 ref={ownershipProofInputRef}
-                label="Property Ownership Proof Reference"
-                placeholder="e.g., Property tax receipt / rent agreement no."
+                label="Property Proof Reference *"
+                placeholder="Electricity bill K-no. / Property tax ID"
                 value={ownershipProofRef}
                 onChangeText={setOwnershipProofRef}
                 icon="home-outline"
+                returnKeyType="next"
+                onSubmitEditing={() => businessRegInputRef.current?.focus()}
+              />
+              <CustomInput
+                ref={businessRegInputRef}
+                label="GST / Udyam Number (optional)"
+                placeholder="Only if your business is registered"
+                value={businessRegNumber}
+                onChangeText={setBusinessRegNumber}
+                icon="document-text-outline"
+                autoCapitalize="characters"
                 returnKeyType="done"
-                onSubmitEditing={handleRegister}
+              />
+              <Text style={styles.docLabel}>Verification Documents *</Text>
+              <ImagePickerSection
+                images={verificationDocs}
+                onImagesChange={setVerificationDocs}
+                maxImages={3}
+                label="Attach ID / Property Proof Photos"
               />
             </>
           )}
@@ -336,6 +368,10 @@ const styles = StyleSheet.create({
   verificationNote: {
     fontSize: 12, color: COLORS.gray, backgroundColor: COLORS.backgroundGray,
     borderRadius: BORDER_RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.md, lineHeight: 17,
+  },
+  docLabel: {
+    fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.black,
+    marginBottom: SPACING.sm, marginTop: SPACING.xs,
   },
   typeSelector: {
     flexDirection: 'row', marginBottom: SPACING.xl,

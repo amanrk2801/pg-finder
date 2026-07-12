@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useData } from '../../hooks';
+import UploadService from '../../services/UploadService';
 import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS } from '../../constants/theme';
 import { CustomInput, CustomButton, ScreenHeader, ImagePickerSection, PillSelector, GenderSelector } from '../../components/common';
 import {
@@ -79,33 +80,44 @@ export default function EditPGScreen({ route, navigation }) {
         }
     };
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleSubmit = async () => {
         const { isValid, errors: newErrors } = validatePGForm(formData, { requireBeds: true });
         if (!isValid) { setErrors(newErrors); return; }
 
-        // Ensure we send numbers to the backend
-        const updatedData = {
-            name: formData.name.trim(),
-            address: formData.address.trim(),
-            totalRooms: parseInt(formData.totalRooms) || 0,
-            occupiedRooms: parseInt(formData.occupiedRooms) || 0,
-            totalBeds: parseInt(formData.totalBeds) || 0,
-            vacantBeds: parseInt(formData.vacantBeds) || 0,
-            rent: parseInt(formData.rent) || 0,
-            gender: formData.gender.toLowerCase(),
-            facilities: facilitiesMapToArray(facilities),
-            safetyMeasures: safetyMapToArray(safetyMeasures),
-            images: selectedImages,
-            ...(location ? { location } : {}),
-        };
+        setIsSubmitting(true);
+        try {
+            const uploadedImages = await UploadService.uploadLocalImages(selectedImages);
 
-        const success = await updatePg(pg.id || pg._id, updatedData);
-        
-        if (success) {
-            Alert.alert('Success', 'Property updated successfully!');
-            navigation.goBack();
-        } else {
-            Alert.alert('Update Failed', 'Could not save changes to the server.');
+            // Ensure we send numbers to the backend
+            const updatedData = {
+                name: formData.name.trim(),
+                address: formData.address.trim(),
+                totalRooms: parseInt(formData.totalRooms) || 0,
+                occupiedRooms: parseInt(formData.occupiedRooms) || 0,
+                totalBeds: parseInt(formData.totalBeds) || 0,
+                vacantBeds: parseInt(formData.vacantBeds) || 0,
+                rent: parseInt(formData.rent) || 0,
+                gender: formData.gender.toLowerCase(),
+                facilities: facilitiesMapToArray(facilities),
+                safetyMeasures: safetyMapToArray(safetyMeasures),
+                images: uploadedImages,
+                ...(location ? { location } : {}),
+            };
+
+            const success = await updatePg(pg.id || pg._id, updatedData);
+
+            if (success) {
+                Alert.alert('Success', 'Property updated successfully!');
+                navigation.goBack();
+            } else {
+                Alert.alert('Update Failed', 'Could not save changes to the server.');
+            }
+        } catch (err) {
+            Alert.alert('Error', 'Could not upload photos. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -208,7 +220,13 @@ export default function EditPGScreen({ route, navigation }) {
                     onToggle={(key) => setSafetyMeasures(prev => ({ ...prev, [key]: !prev[key] }))}
                 />
 
-                <CustomButton title="Save Changes" onPress={handleSubmit} style={{ marginTop: SPACING.xl }} />
+                <CustomButton
+                    title={isSubmitting ? 'Saving...' : 'Save Changes'}
+                    onPress={handleSubmit}
+                    loading={isSubmitting}
+                    disabled={isSubmitting}
+                    style={{ marginTop: SPACING.xl }}
+                />
                 <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>

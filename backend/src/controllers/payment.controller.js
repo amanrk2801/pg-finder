@@ -1,23 +1,54 @@
 const Payment = require('../models/Payment');
 const Booking = require('../models/Booking');
 const PG = require('../models/PG');
+const Settings = require('../models/Settings');
 
 async function createPayment(req, res, next) {
   try {
     const {
-      bookingId, amount, commissionAmount, adminRevenue, method, transactionId, month, year, status,
+      bookingId, amount, method, transactionId, month, year,
     } = req.body;
+
+    // Amounts are computed server-side from the booking — never trusted from the client.
+    const booking = await Booking.findOne({ _id: bookingId, userId: req.user.id }).lean();
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found or not yours' });
+    }
+
+    const settings = await Settings.findOne().lean();
+    const feePct = settings?.platformFee ?? 5;
+    const monthlyRent = booking.monthlyRent;
+    const platformFee = Math.round(monthlyRent * (feePct / 100) * 100) / 100;
+
+    const expectedMonthly = monthlyRent;
+    const expectedInitial = monthlyRent + platformFee;
+    const paid = Number(amount);
+    const isInitial = Math.abs(paid - expectedInitial) < 1;
+    const isMonthly = Math.abs(paid - expectedMonthly) < 1;
+
+    if (!isInitial && !isMonthly) {
+      return res.status(400).json({
+        message: `Invalid payment amount. Expected ₹${expectedMonthly} (rent) or ₹${expectedInitial} (booking + fee)`,
+      });
+    }
+
+    const parsedMonth = Number(month);
+    const parsedYear = Number(year);
+    if (!Number.isInteger(parsedMonth) || parsedMonth < 1 || parsedMonth > 12 || !Number.isInteger(parsedYear)) {
+      return res.status(400).json({ message: 'Invalid payment month/year' });
+    }
+
     const payment = await Payment.create({
       bookingId,
       userId: req.user.id,
-      amount,
-      commissionAmount: commissionAmount || 0,
-      adminRevenue: adminRevenue || amount,
+      amount: paid,
+      commissionAmount: platformFee,
+      adminRevenue: isInitial ? monthlyRent : paid,
       method,
       transactionId,
-      month,
-      year,
-      status: status || 'paid',
+      month: parsedMonth,
+      year: parsedYear,
+      status: 'paid',
     });
     return res.status(201).json(payment);
   } catch (err) {

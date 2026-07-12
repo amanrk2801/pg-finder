@@ -33,6 +33,15 @@ router.get('/pg/:pgId', auth(['admin', 'superadmin']), controller.listLeavesByPg
 
 /**
  * @swagger
+ * /leaves/owner:
+ *   get:
+ *     summary: List leave requests across PGs owned by the logged-in admin (or all, for superadmin)
+ *     tags: [Leaves]
+ */
+router.get('/owner', auth(['admin', 'superadmin']), controller.listOwnerLeaves);
+
+/**
+ * @swagger
  * /leaves/{id}:
  *   put:
  *     summary: Update leave status
