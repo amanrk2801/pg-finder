@@ -1,0 +1,18 @@
+# Auto-builds an installable Android APK on every push to these branches.
+# Requires (one-time): a first interactive `eas build` (creates the keystore),
+# and the GitHub repo connected in Expo dashboard → project → GitHub.
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - task-branch
+
+jobs:
+  build_android:
+    name: Build Android (preview APK)
+    type: build
+    params:
+      platform: android
+      profile: preview
