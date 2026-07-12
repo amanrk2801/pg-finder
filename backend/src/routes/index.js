@@ -10,6 +10,7 @@ const reviewRoutes = require('./review.routes');
 const messRoutes = require('./mess.routes');
 const leaveRoutes = require('./leave.routes');
 const disputeRoutes = require('./dispute.routes');
+const uploadRoutes = require('./upload.routes');
 
 const router = express.Router();
 
@@ -27,5 +28,6 @@ router.use('/reviews', reviewRoutes);
 router.use('/mess', messRoutes);
 router.use('/leaves', leaveRoutes);
 router.use('/disputes', disputeRoutes);
+router.use('/uploads', uploadRoutes);
 
 module.exports = router;

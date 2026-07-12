@@ -5,6 +5,7 @@ import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../
 const GENDER_OPTIONS = [
     { value: 'Female', label: '👩 Female Only' },
     { value: 'Male', label: '👨 Male Only' },
+    { value: 'Unisex', label: '👫 Both' },
 ];
 
 const GenderSelector = ({ selected, onSelect, style }) => (
@@ -30,12 +31,13 @@ const GenderSelector = ({ selected, onSelect, style }) => (
 const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
-        gap: SPACING.md,
+        gap: SPACING.sm,
         marginBottom: SPACING.lg,
     },
     button: {
         flex: 1,
-        padding: SPACING.lg,
+        paddingVertical: SPACING.md,
+        paddingHorizontal: SPACING.xs,
         backgroundColor: COLORS.backgroundGray,
         borderRadius: BORDER_RADIUS.lg,
         alignItems: 'center',
@@ -47,7 +49,7 @@ const styles = StyleSheet.create({
         borderColor: COLORS.primary,
     },
     text: {
-        fontSize: FONT_SIZES.md,
+        fontSize: FONT_SIZES.sm,
         color: COLORS.gray,
         fontWeight: FONT_WEIGHTS.semibold,
     },

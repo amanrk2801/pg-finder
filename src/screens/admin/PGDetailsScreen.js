@@ -73,18 +73,51 @@ export default function PGDetailsScreen({ route, navigation }) {
 
                     <Text style={styles.pgAddress}>📍 {pg.address || 'Address not available'}</Text>
 
-                    <View style={styles.statsGrid}>
-                        {[
-                            { label: 'Total Rooms', value: pg.totalRooms, color: COLORS.black },
-                            { label: 'Available', value: (pg.totalRooms || 0) - (pg.occupiedRooms || 0), color: COLORS.secondary },
-                            { label: 'Vacant Beds', value: pg.vacantBeds, color: COLORS.primary },
-                        ].map(({ label, value, color }) => (
-                            <View key={label} style={styles.statBox}>
-                                <Text style={styles.statLabel}>{label}</Text>
-                                <Text style={[styles.statValue, { color }]}>{value || 0}</Text>
-                            </View>
-                        ))}
-                    </View>
+                    {(() => {
+                        const totalRooms = Math.max(0, pg.totalRooms || 0);
+                        const occupiedRooms = Math.min(Math.max(0, pg.occupiedRooms || 0), totalRooms);
+                        const availableRooms = totalRooms - occupiedRooms;
+                        const totalBeds = Math.max(0, pg.totalBeds || 0);
+                        const vacantBeds = Math.min(Math.max(0, pg.vacantBeds || 0), totalBeds || pg.vacantBeds || 0);
+                        const occupiedBeds = Math.max(0, totalBeds - vacantBeds);
+                        const occupancyPct = totalBeds > 0 ? Math.round((occupiedBeds / totalBeds) * 100) : 0;
+
+                        const stats = [
+                            { label: 'Total Rooms', value: totalRooms, color: COLORS.black },
+                            { label: 'Available Rooms', value: availableRooms, color: COLORS.secondary },
+                            { label: 'Total Beds', value: totalBeds, color: COLORS.black },
+                            { label: 'Vacant Beds', value: vacantBeds, color: vacantBeds > 0 ? COLORS.secondary : COLORS.primary },
+                        ];
+
+                        return (
+                            <>
+                                <View style={styles.statsGrid}>
+                                    {stats.slice(0, 2).map(({ label, value, color }) => (
+                                        <View key={label} style={styles.statBox}>
+                                            <Text style={styles.statLabel}>{label}</Text>
+                                            <Text style={[styles.statValue, { color }]}>{value}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                                <View style={[styles.statsGrid, { marginBottom: SPACING.md }]}>
+                                    {stats.slice(2, 4).map(({ label, value, color }) => (
+                                        <View key={label} style={styles.statBox}>
+                                            <Text style={styles.statLabel}>{label}</Text>
+                                            <Text style={[styles.statValue, { color }]}>{value}</Text>
+                                        </View>
+                                    ))}
+                                </View>
+                                {totalBeds > 0 && (
+                                    <View style={styles.occupancyRow}>
+                                        <View style={styles.occupancyTrack}>
+                                            <View style={[styles.occupancyFill, { width: `${occupancyPct}%` }]} />
+                                        </View>
+                                        <Text style={styles.occupancyText}>{occupancyPct}% occupied</Text>
+                                    </View>
+                                )}
+                            </>
+                        );
+                    })()}
 
                     <View style={styles.priceContainer}>
                         <Text style={styles.priceLabel}>Monthly Rent</Text>
@@ -149,10 +182,14 @@ const styles = StyleSheet.create({
     genderBadge: { backgroundColor: COLORS.backgroundGray, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, borderRadius: BORDER_RADIUS.md },
     genderText: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black },
     pgAddress: { fontSize: FONT_SIZES.base, color: COLORS.gray, marginBottom: SPACING.xl },
-    statsGrid: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.xl },
+    statsGrid: { flexDirection: 'row', gap: SPACING.md, marginBottom: SPACING.md },
     statBox: { flex: 1, backgroundColor: COLORS.backgroundGray, padding: SPACING.lg, borderRadius: BORDER_RADIUS.lg, alignItems: 'center' },
     statLabel: { fontSize: 11, color: COLORS.gray, fontWeight: FONT_WEIGHTS.medium, marginBottom: 4 },
     statValue: { fontSize: FONT_SIZES.xxxl, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black },
+    occupancyRow: { marginBottom: SPACING.xl },
+    occupancyTrack: { height: 8, borderRadius: 4, backgroundColor: COLORS.backgroundGray, overflow: 'hidden', marginBottom: 6 },
+    occupancyFill: { height: '100%', borderRadius: 4, backgroundColor: COLORS.primary },
+    occupancyText: { fontSize: FONT_SIZES.xs, color: COLORS.gray, fontWeight: FONT_WEIGHTS.semibold, textAlign: 'right' },
     priceContainer: {
         backgroundColor: COLORS.backgroundPink, padding: SPACING.lg, borderRadius: BORDER_RADIUS.lg,
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xl,

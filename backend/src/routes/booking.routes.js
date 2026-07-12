@@ -24,6 +24,15 @@ router.get('/me', auth(['user', 'admin', 'superadmin']), controller.listMyBookin
 
 /**
  * @swagger
+ * /bookings/{id}:
+ *   put:
+ *     summary: Update a booking (owner tenant or superadmin) — e.g. nextDueDate after a rent payment
+ *     tags: [Bookings]
+ */
+router.put('/:id', auth(['user', 'admin', 'superadmin']), controller.updateBooking);
+
+/**
+ * @swagger
  * /bookings/owner:
  *   get:
  *     summary: Get bookings across PGs owned by the logged-in admin (or all, for superadmin)

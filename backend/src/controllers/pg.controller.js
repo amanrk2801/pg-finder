@@ -2,7 +2,7 @@ const PG = require('../models/PG');
 
 async function listPgs(req, res, next) {
   try {
-    const { city, minRent, maxRent } = req.query;
+    const { city, minRent, maxRent, limit, skip } = req.query;
 
     let filter = { status: 'approved' };
 
@@ -23,7 +23,11 @@ async function listPgs(req, res, next) {
     if (minRent) filter.rent = { ...filter.rent, $gte: Number(minRent) };
     if (maxRent) filter.rent = { ...filter.rent, $lte: Number(maxRent) };
 
-    const pgs = await PG.find(filter).lean();
+    let query = PG.find(filter).sort({ createdAt: -1 });
+    if (skip) query = query.skip(Math.max(0, Number(skip) || 0));
+    if (limit) query = query.limit(Math.min(100, Math.max(1, Number(limit) || 100)));
+
+    const pgs = await query.lean();
     return res.json(pgs);
   } catch (err) {
     return next(err);
@@ -62,9 +66,16 @@ async function updatePg(req, res, next) {
       ? { _id: pgId }
       : { _id: pgId, adminId };
 
+    const updates = { ...req.body };
+    if (req.user.type !== 'superadmin') {
+      // Only superadmin may change approval status or reassign ownership.
+      delete updates.status;
+      delete updates.adminId;
+    }
+
     const pg = await PG.findOneAndUpdate(
       filter,
-      { $set: req.body },
+      { $set: updates },
       { new: true, runValidators: true },
     );
 

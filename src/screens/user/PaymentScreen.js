@@ -59,6 +59,7 @@ export default function PaymentScreen({ route, navigation }) {
                 const now = new Date();
 
                 if (isRentPayment) {
+                    const dueBase = booking.nextDueDate ? new Date(booking.nextDueDate) : now;
                     await addPayment({
                         bookingId: booking.id,
                         userId: user.id,
@@ -69,10 +70,10 @@ export default function PaymentScreen({ route, navigation }) {
                         method: selectedMethod,
                         transactionId: result.data.razorpay_payment_id,
                         status: 'paid',
-                        month: now.getMonth() + 1,
-                        year: now.getFullYear(),
+                        month: dueBase.getMonth() + 1,
+                        year: dueBase.getFullYear(),
                     });
-                    const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                    const nextDue = new Date(dueBase.getFullYear(), dueBase.getMonth() + 1, 1);
                     await updateBooking(booking.id, { nextDueDate: nextDue.toISOString() });
                 } else {
                     const newBooking = await addBooking(user.id, pg.id, {
@@ -81,8 +82,9 @@ export default function PaymentScreen({ route, navigation }) {
                     });
 
                     if (newBooking) {
+                        const newBookingId = newBooking.id || newBooking._id;
                         await addPayment({
-                            bookingId: newBooking.id || newBooking._id,
+                            bookingId: newBookingId,
                             userId: user.id,
                             pgId: pg.id,
                             amount: total,
@@ -94,6 +96,8 @@ export default function PaymentScreen({ route, navigation }) {
                             month: now.getMonth() + 1,
                             year: now.getFullYear(),
                         });
+                        const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+                        await updateBooking(newBookingId, { nextDueDate: nextDue.toISOString() });
                     }
                 }
 

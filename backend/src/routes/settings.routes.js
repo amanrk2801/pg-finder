@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const validateBody = require('../middleware/validate');
 const controller = require('../controllers/settings.controller');
 
 const router = express.Router();
@@ -46,6 +47,11 @@ router.get('/', controller.getSettings);
  *       200:
  *         description: Updated
  */
-router.put('/', auth(['superadmin']), controller.updateSettings);
+router.put(
+  '/',
+  auth(['superadmin']),
+  validateBody({ platformFee: { type: 'number', required: true, min: 0, max: 100 } }),
+  controller.updateSettings,
+);
 
 module.exports = router;

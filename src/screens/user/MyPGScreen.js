@@ -34,28 +34,31 @@ export default function MyPGScreen({ navigation }) {
         leaveRequests,
     } = useData();
 
-    const [activeBooking, setActiveBooking] = useState(null);
-    const [pg, setPg] = useState(null);
-    const [userPayments, setUserPayments] = useState([]);
+    const [activeBookings, setActiveBookings] = useState([]);
+    const [selectedBookingId, setSelectedBookingId] = useState(null);
 
     const loadData = useCallback(() => {
         const userId = user?.id;
         if (!userId) return;
 
-        const booking = (bookings || []).find(b => b.userId === userId && b.status === 'active') || null;
-        const pgData = booking ? (pgs || []).find(p => p.id === booking.pgId) : null;
-        const userPmts = (payments || []).filter(p => p.userId === userId);
-
-        setActiveBooking(booking);
-        setPg(pgData);
-        setUserPayments(userPmts);
-    }, [user, bookings, pgs, payments]);
+        const userBookings = (bookings || []).filter(b => b.userId === userId && b.status === 'active');
+        setActiveBookings(userBookings);
+        setSelectedBookingId(prev => (
+            prev && userBookings.some(b => b.id === prev) ? prev : (userBookings[0]?.id || null)
+        ));
+    }, [user, bookings]);
 
     useFocusEffect(
         useCallback(() => { loadData(); }, [loadData]),
     );
 
-    useEffect(() => { loadData(); }, [bookings, pgs, payments, loadData]);
+    useEffect(() => { loadData(); }, [bookings, loadData]);
+
+    const activeBooking = activeBookings.find(b => b.id === selectedBookingId) || null;
+    const pg = activeBooking ? (pgs || []).find(p => p.id === activeBooking.pgId) : null;
+    const userPayments = activeBooking
+        ? (payments || []).filter(p => p.userId === user?.id && p.bookingId === activeBooking.id)
+        : [];
 
     const messMenu = pg ? getMessMenuForPg(pg.id) : null;
 
@@ -135,6 +138,32 @@ export default function MyPGScreen({ navigation }) {
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
             <ScreenHeader title="My PG" subtitle={pg.name} />
 
+            {activeBookings.length > 1 && (
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.pgSwitcher}
+                    contentContainerStyle={styles.pgSwitcherContent}
+                >
+                    {activeBookings.map(b => {
+                        const bPg = (pgs || []).find(p => p.id === b.pgId);
+                        const isActive = b.id === selectedBookingId;
+                        return (
+                            <TouchableOpacity
+                                key={b.id}
+                                style={[styles.pgChip, isActive && styles.pgChipActive]}
+                                onPress={() => setSelectedBookingId(b.id)}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={[styles.pgChipText, isActive && styles.pgChipTextActive]} numberOfLines={1}>
+                                    {bPg?.name || 'PG'}
+                                </Text>
+                            </TouchableOpacity>
+                        );
+                    })}
+                </ScrollView>
+            )}
+
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
 
                 {/* Rent Status Card */}
@@ -193,6 +222,32 @@ export default function MyPGScreen({ navigation }) {
                         </View>
                     )}
                 </View>
+
+                {/* Pay Next Month in Advance */}
+                {thisMonthPaid && activeBooking.nextDueDate && (
+                    <View style={styles.nextMonthCard}>
+                        <View style={styles.nextMonthTop}>
+                            <View style={styles.nextMonthIconBox}>
+                                <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                            </View>
+                            <View style={styles.nextMonthInfo}>
+                                <Text style={styles.nextMonthTitle}>
+                                    {monthNames[new Date(activeBooking.nextDueDate).getMonth()]} {new Date(activeBooking.nextDueDate).getFullYear()} Rent
+                                </Text>
+                                <Text style={styles.nextMonthSubtitle}>
+                                    Due {new Date(activeBooking.nextDueDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · Pay early to skip the reminder
+                                </Text>
+                            </View>
+                        </View>
+                        <TouchableOpacity
+                            style={styles.nextMonthPayBtn}
+                            activeOpacity={0.9}
+                            onPress={() => navigation.navigate(ROUTES.USER.PAYMENT, { pg, booking: activeBooking })}
+                        >
+                            <Text style={styles.nextMonthPayBtnText}>Pay Early</Text>
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                 {/* Today's Mess Menu */}
                 {messMenu && todayMenu && (
@@ -328,6 +383,16 @@ const styles = StyleSheet.create({
     content: { flex: 1, backgroundColor: COLORS.backgroundGray },
     emptyContainer: { flex: 1, justifyContent: 'center' },
 
+    pgSwitcher: { flexGrow: 0, backgroundColor: COLORS.white, paddingBottom: SPACING.sm, marginTop: 12 },
+    pgSwitcherContent: { paddingHorizontal: SPACING.lg, gap: SPACING.sm, alignItems: 'flex-start' },
+    pgChip: {
+        alignSelf: 'flex-start', paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm,
+        borderRadius: BORDER_RADIUS.lg, backgroundColor: COLORS.backgroundGray, maxWidth: 150,
+    },
+    pgChipActive: { backgroundColor: COLORS.primary },
+    pgChipText: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.semibold, color: COLORS.gray },
+    pgChipTextActive: { color: COLORS.white },
+
     rentCard: {
         backgroundColor: COLORS.white, margin: SPACING.lg, borderRadius: BORDER_RADIUS.xl,
         padding: SPACING.xl, ...SHADOWS.medium,
@@ -363,6 +428,24 @@ const styles = StyleSheet.create({
         color: '#D32F2F',
         fontWeight: FONT_WEIGHTS.bold,
     },
+
+    nextMonthCard: {
+        backgroundColor: COLORS.white, marginHorizontal: SPACING.lg, marginBottom: SPACING.lg,
+        borderRadius: BORDER_RADIUS.xl, padding: SPACING.lg, ...SHADOWS.small,
+    },
+    nextMonthTop: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.md },
+    nextMonthIconBox: {
+        width: 40, height: 40, borderRadius: BORDER_RADIUS.md,
+        backgroundColor: COLORS.backgroundPink, justifyContent: 'center', alignItems: 'center', marginRight: SPACING.md,
+    },
+    nextMonthInfo: { flex: 1 },
+    nextMonthTitle: { fontSize: FONT_SIZES.sm, fontWeight: FONT_WEIGHTS.bold, color: COLORS.black },
+    nextMonthSubtitle: { fontSize: 11, color: COLORS.gray, marginTop: 2 },
+    nextMonthPayBtn: {
+        backgroundColor: COLORS.backgroundPink, paddingVertical: SPACING.sm,
+        borderRadius: BORDER_RADIUS.md, borderWidth: 1, borderColor: COLORS.primary, alignItems: 'center',
+    },
+    nextMonthPayBtnText: { color: COLORS.primary, fontWeight: FONT_WEIGHTS.bold, fontSize: FONT_SIZES.sm },
 
     messCard: {
         backgroundColor: COLORS.white, marginHorizontal: SPACING.lg, borderRadius: BORDER_RADIUS.xl,

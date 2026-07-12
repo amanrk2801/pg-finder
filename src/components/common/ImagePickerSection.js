@@ -3,9 +3,9 @@ import { View, Text, TouchableOpacity, Image, ScrollView, Alert, StyleSheet } fr
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS } from '../../constants/theme';
 
-const MAX_IMAGES = 5;
+const DEFAULT_MAX_IMAGES = 5;
 
-const ImagePickerSection = ({ images, onImagesChange }) => {
+const ImagePickerSection = ({ images, onImagesChange, maxImages = DEFAULT_MAX_IMAGES, label }) => {
     const pickImage = async () => {
         const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permissionResult.granted) {
@@ -16,13 +16,18 @@ const ImagePickerSection = ({ images, onImagesChange }) => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsMultipleSelection: true,
-            selectionLimit: MAX_IMAGES,
-            quality: 0.7,
+            selectionLimit: maxImages,
+            quality: 0.5,
+            base64: true,
         });
 
         if (!result.canceled) {
-            const newUris = result.assets.map((asset) => asset.uri);
-            onImagesChange([...images, ...newUris].slice(0, MAX_IMAGES));
+            // Data-URIs both render in <Image> and can be uploaded to the backend,
+            // unlike file:// paths which only exist on the picking device.
+            const newUris = result.assets.map((asset) => (
+                asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri
+            ));
+            onImagesChange([...images, ...newUris].slice(0, maxImages));
         }
     };
 
@@ -34,8 +39,8 @@ const ImagePickerSection = ({ images, onImagesChange }) => {
         <View>
             <TouchableOpacity style={styles.uploadButton} onPress={pickImage} activeOpacity={0.7}>
                 <Text style={styles.uploadIcon}>📸</Text>
-                <Text style={styles.uploadText}>Upload from Gallery</Text>
-                <Text style={styles.uploadSubText}>(Max {MAX_IMAGES} photos)</Text>
+                <Text style={styles.uploadText}>{label || 'Upload from Gallery'}</Text>
+                <Text style={styles.uploadSubText}>(Max {maxImages} photos)</Text>
             </TouchableOpacity>
 
             {images.length > 0 && (

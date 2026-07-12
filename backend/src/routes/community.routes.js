@@ -1,5 +1,6 @@
 const express = require('express');
 const auth = require('../middleware/auth');
+const validateBody = require('../middleware/validate');
 const controller = require('../controllers/community.controller');
 
 const router = express.Router();
@@ -54,6 +55,48 @@ router.get('/', controller.listPosts);
  *       201:
  *         description: Created
  */
-router.post('/', auth(['user']), controller.createPost);
+router.post(
+  '/',
+  auth(['user']),
+  validateBody({
+    title: { type: 'string', required: true, trim: true, min: 2, max: 120 },
+    description: { type: 'string', required: true, trim: true, min: 2, max: 2000 },
+    category: { type: 'string', enum: ['Sale', 'Job', 'Service'] },
+    contactInfo: { type: 'string', trim: true, max: 120 },
+  }),
+  controller.createPost,
+);
+
+/**
+ * @swagger
+ * /community/{id}:
+ *   put:
+ *     summary: Update own post (e.g. mark Closed)
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.put(
+  '/:id',
+  auth(['user']),
+  validateBody({
+    status: { type: 'string', enum: ['Active', 'Closed'] },
+    title: { type: 'string', trim: true, min: 2, max: 120 },
+    description: { type: 'string', trim: true, min: 2, max: 2000 },
+    contactInfo: { type: 'string', trim: true, max: 120 },
+  }),
+  controller.updatePost,
+);
+
+/**
+ * @swagger
+ * /community/{id}:
+ *   delete:
+ *     summary: Delete own post (superadmin may delete any)
+ *     tags: [Community]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.delete('/:id', auth(['user', 'superadmin']), controller.deletePost);
 
 module.exports = router;

@@ -11,11 +11,19 @@ import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS, TYPO
 import PGCard from '../../components/cards/PGCard';
 import { EmptyState, ScreenHeader } from '../../components/common';
 
+const STATUS_CONFIG = {
+    active: { label: 'Active Stay', bg: '#E8F5E9', color: '#4CAF50', icon: 'checkmark-circle' },
+    completed: { label: 'Left', bg: '#F0F2F5', color: COLORS.gray, icon: 'log-out-outline' },
+    cancelled: { label: 'Cancelled', bg: '#FFEBEE', color: COLORS.error, icon: 'close-circle' },
+};
+
 export default function MyBookingsScreen({ navigation }) {
     const { pgs, bookings, clearBookings } = useData();
     const { user } = useAuth();
 
-    const userBookings = bookings.filter(b => b.userId === user?.id);
+    const userBookings = bookings
+        .filter(b => b.userId === user?.id)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     const handleClearAll = () => {
         Alert.alert('Clear History', 'Are you sure you want to clear your booking history?', [
@@ -54,28 +62,40 @@ export default function MyBookingsScreen({ navigation }) {
                 ) : (
                     userBookings.map((booking) => {
                         const pg = pgs.find(p => p.id === booking.pgId);
-                        if (!pg) return null;
+                        const statusInfo = STATUS_CONFIG[booking.status] || STATUS_CONFIG.active;
 
                         return (
-                            <View key={booking.id}>
+                            <View key={booking.id} style={statusInfo === STATUS_CONFIG.active ? null : styles.pastBookingWrap}>
                                 <View style={styles.bookingHeader}>
-                                    <View style={styles.statusBadge}>
-                                        <Text style={styles.statusText}>{booking.status}</Text>
+                                    <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+                                        <Ionicons name={statusInfo.icon} size={12} color={statusInfo.color} style={{ marginRight: 4 }} />
+                                        <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
                                     </View>
                                     <Text style={styles.dateText}>{formatDate(booking.date || booking.createdAt)}</Text>
                                 </View>
-                                <PGCard
-                                    pg={pg}
-                                    onPress={() => navigation.navigate(ROUTES.USER.PG_DETAILS, { pg })}
-                                    showFavoriteIcon={false}
-                                />
-                                <TouchableOpacity
-                                    style={styles.disputeButton}
-                                    onPress={() => navigation.navigate(ROUTES.USER.RAISE_ISSUE, { pgId: pg.id, bookingId: booking.id })}
-                                >
-                                    <Ionicons name="warning-outline" size={16} color={COLORS.error} />
-                                    <Text style={styles.disputeText}>Raise Issue / Dispute</Text>
-                                </TouchableOpacity>
+
+                                {pg ? (
+                                    <PGCard
+                                        pg={pg}
+                                        onPress={() => navigation.navigate(ROUTES.USER.PG_DETAILS, { pg })}
+                                        showFavoriteIcon={false}
+                                    />
+                                ) : (
+                                    <View style={styles.unknownPgCard}>
+                                        <Ionicons name="home-outline" size={20} color={COLORS.gray} />
+                                        <Text style={styles.unknownPgText}>Property no longer listed</Text>
+                                    </View>
+                                )}
+
+                                {pg && (
+                                    <TouchableOpacity
+                                        style={styles.disputeButton}
+                                        onPress={() => navigation.navigate(ROUTES.USER.RAISE_ISSUE, { pgId: pg.id, bookingId: booking.id })}
+                                    >
+                                        <Ionicons name="warning-outline" size={16} color={COLORS.error} />
+                                        <Text style={styles.disputeText}>Raise Issue / Dispute</Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         );
                     })
@@ -105,9 +125,10 @@ const styles = StyleSheet.create({
         marginHorizontal: SPACING.xxl, marginBottom: SPACING.sm, marginTop: SPACING.md,
     },
     statusBadge: {
-        backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: BORDER_RADIUS.sm,
+        flexDirection: 'row', alignItems: 'center',
+        paddingHorizontal: 8, paddingVertical: 4, borderRadius: BORDER_RADIUS.sm,
     },
-    statusText: { color: '#4CAF50', fontSize: 10, fontWeight: FONT_WEIGHTS.bold, textTransform: 'uppercase' },
+    statusText: { fontSize: 10, fontWeight: FONT_WEIGHTS.bold, textTransform: 'uppercase' },
     dateText: { fontSize: 10, color: COLORS.gray },
     disputeButton: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -115,4 +136,11 @@ const styles = StyleSheet.create({
         paddingVertical: 10, borderRadius: BORDER_RADIUS.md, marginTop: 4, marginBottom: SPACING.lg,
     },
     disputeText: { color: COLORS.error, fontWeight: FONT_WEIGHTS.bold, fontSize: FONT_SIZES.sm, marginLeft: 6 },
+    pastBookingWrap: { opacity: 0.7 },
+    unknownPgCard: {
+        flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+        backgroundColor: COLORS.backgroundGray, marginHorizontal: SPACING.xxl,
+        padding: SPACING.lg, borderRadius: BORDER_RADIUS.lg, marginBottom: SPACING.md,
+    },
+    unknownPgText: { fontSize: FONT_SIZES.sm, color: COLORS.gray },
 });

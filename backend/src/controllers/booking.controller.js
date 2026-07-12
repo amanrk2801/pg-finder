@@ -3,25 +3,40 @@ const PG = require('../models/PG');
 
 async function createBooking(req, res, next) {
   try {
-    const { pgId, monthlyRent } = req.body;
+    const { pgId } = req.body;
 
     const existingBooking = await Booking.findOne({ userId: req.user.id, pgId, status: 'active' });
     if (existingBooking) {
       return res.status(409).json({ message: 'You already have an active booking for this PG' });
     }
 
-    const booking = await Booking.create({
-      pgId,
-      monthlyRent,
-      userId: req.user.id,
-      status: 'active',
-    });
+    // Atomically reserve a bed: the conditional update only succeeds while a bed
+    // is actually free, so two users can't both take the last one.
+    const pg = await PG.findOneAndUpdate(
+      { _id: pgId, status: 'approved', vacantBeds: { $gt: 0 } },
+      { $inc: { vacantBeds: -1 } },
+      { new: true },
+    );
+    if (!pg) {
+      return res.status(409).json({ message: 'No beds available at this PG' });
+    }
 
-    const pg = await PG.findById(pgId);
-    if (pg && pg.vacantBeds > 0) {
-      const newVacantBeds = pg.vacantBeds - 1;
-      const newOccupiedRooms = pg.occupiedRooms + (newVacantBeds % 3 === 0 ? 1 : 0);
-      await PG.updateOne({ _id: pgId }, { $set: { vacantBeds: newVacantBeds, occupiedRooms: newOccupiedRooms } });
+    if (pg.vacantBeds % 3 === 0) {
+      await PG.updateOne({ _id: pgId }, { $inc: { occupiedRooms: 1 } });
+    }
+
+    let booking;
+    try {
+      booking = await Booking.create({
+        pgId,
+        monthlyRent: pg.rent, // server-authoritative — never trust the client's rent
+        userId: req.user.id,
+        status: 'active',
+      });
+    } catch (createErr) {
+      // Release the reserved bed if booking creation fails.
+      await PG.updateOne({ _id: pgId }, { $inc: { vacantBeds: 1 } });
+      throw createErr;
     }
 
     return res.status(201).json(booking);
@@ -35,6 +50,25 @@ async function listMyBookings(req, res, next) {
     const filter = req.user.type === 'superadmin' ? {} : { userId: req.user.id };
     const bookings = await Booking.find(filter).lean();
     return res.json(bookings);
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function updateBooking(req, res, next) {
+  try {
+    const { nextDueDate, status } = req.body;
+    const filter = req.user.type === 'superadmin'
+      ? { _id: req.params.id }
+      : { _id: req.params.id, userId: req.user.id };
+
+    const update = {};
+    if (nextDueDate !== undefined) update.nextDueDate = nextDueDate;
+    if (status !== undefined) update.status = status;
+
+    const booking = await Booking.findOneAndUpdate(filter, { $set: update }, { new: true, runValidators: true });
+    if (!booking) return res.status(404).json({ message: 'Booking not found or unauthorized' });
+    return res.json(booking);
   } catch (err) {
     return next(err);
   }
@@ -61,4 +95,5 @@ module.exports = {
   createBooking,
   listMyBookings,
   listOwnerBookings,
+  updateBooking,
 };
