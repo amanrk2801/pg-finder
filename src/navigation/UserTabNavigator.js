@@ -2,6 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 import { ROUTES } from './routes';
 
@@ -22,6 +23,10 @@ const TAB_ICONS = {
 };
 
 export default function UserTabNavigator() {
+    const insets = useSafeAreaInsets();
+    // Sit above the system navigation bar (edge-to-edge on installed Android builds).
+    const bottomPad = Math.max(insets.bottom, Platform.OS === 'ios' ? 28 : 12);
+
     return (
         <Tab.Navigator
             screenOptions={({ route }) => ({
@@ -37,8 +42,8 @@ export default function UserTabNavigator() {
                     borderTopWidth: 1,
                     borderTopColor: COLORS.borderLight,
                     backgroundColor: COLORS.white,
-                    height: Platform.OS === 'ios' ? 88 : 68,
-                    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+                    height: 56 + bottomPad,
+                    paddingBottom: bottomPad,
                     paddingTop: 12,
                 },
                 tabBarLabelStyle: {
