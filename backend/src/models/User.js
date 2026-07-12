@@ -11,6 +11,8 @@ const userSchema = new mongoose.Schema(
     },
     name: { type: String },
     phone: { type: String },
+    businessRegNumber: { type: String },
+    ownershipProofRef: { type: String },
     status: {
       type: String,
       enum: ['active', 'suspended'],

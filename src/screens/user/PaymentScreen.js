@@ -17,7 +17,7 @@ const RZ_GREEN = '#10B981';
 export default function PaymentScreen({ route, navigation }) {
     const { pg, booking } = route.params;
     const { user } = useAuth();
-    const { addBooking, addPayment, updateBooking, updatePg, settings } = useData();
+    const { addBooking, addPayment, updateBooking, settings } = useData();
 
     const [selectedMethod, setSelectedMethod] = useState('upi');
     const [paymentState, setPaymentState] = useState('idle');
@@ -75,18 +75,14 @@ export default function PaymentScreen({ route, navigation }) {
                     const nextDue = new Date(now.getFullYear(), now.getMonth() + 1, 1);
                     await updateBooking(booking.id, { nextDueDate: nextDue.toISOString() });
                 } else {
-                    const bookingSuccess = await addBooking(user.id, pg.id, {
+                    const newBooking = await addBooking(user.id, pg.id, {
                         monthlyRent: pg.rent,
                         paymentMethod: selectedMethod,
                     });
 
-                    if (bookingSuccess) {
-                        const newVacantBeds = pg.vacantBeds > 0 ? pg.vacantBeds - 1 : 0;
-                        const newOccupiedRooms = pg.occupiedRooms + (newVacantBeds % 3 === 0 ? 1 : 0);
-                        await updatePg(pg.id, { vacantBeds: newVacantBeds, occupiedRooms: newOccupiedRooms });
-
+                    if (newBooking) {
                         await addPayment({
-                            bookingId: 'initial',
+                            bookingId: newBooking.id || newBooking._id,
                             userId: user.id,
                             pgId: pg.id,
                             amount: total,

@@ -19,7 +19,7 @@ export default function PaymentHistoryScreen({ navigation }) {
     const { payments } = useData();
 
     const userPayments = useMemo(
-        () => payments.filter(p => p.userId === user?.id).sort((a, b) => new Date(b.date) - new Date(a.date)),
+        () => payments.filter(p => p.userId === user?.id).sort((a, b) => new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt)),
         [payments, user],
     );
 
@@ -68,7 +68,7 @@ export default function PaymentHistoryScreen({ navigation }) {
                                             {MONTH_NAMES[(payment.month || 1) - 1]} {payment.year}
                                         </Text>
                                         <Text style={styles.paymentDate}>
-                                            {new Date(payment.date).toLocaleDateString('en-IN', {
+                                            {new Date(payment.date || payment.createdAt).toLocaleDateString('en-IN', {
                                                 day: 'numeric', month: 'short', year: 'numeric',
                                             })}
                                         </Text>

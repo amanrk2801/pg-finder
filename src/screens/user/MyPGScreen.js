@@ -7,7 +7,6 @@ import { useAuth, useData } from '../../hooks';
 import { ROUTES } from '../../navigation/routes';
 import { COLORS, SPACING, FONT_SIZES, FONT_WEIGHTS, BORDER_RADIUS, SHADOWS } from '../../constants/theme';
 import { ScreenHeader, EmptyState } from '../../components/common';
-import StorageService from '../../services/StorageService';
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const MEAL_ICONS = { breakfast: 'sunny-outline', lunch: 'restaurant-outline', dinner: 'moon-outline' };
@@ -39,30 +38,13 @@ export default function MyPGScreen({ navigation }) {
     const [pg, setPg] = useState(null);
     const [userPayments, setUserPayments] = useState([]);
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(() => {
         const userId = user?.id;
         if (!userId) return;
 
-        let currentBookings = bookings;
-        let currentPgs = pgs;
-        let currentPayments = payments;
-
-        if (!currentBookings?.length || !currentBookings.find(b => b.userId === userId && b.status === 'Confirmed')) {
-            const stored = await StorageService.getBookings();
-            if (stored?.length) currentBookings = stored;
-        }
-        if (!currentPgs?.length) {
-            const stored = await StorageService.getPgs();
-            if (stored?.length) currentPgs = stored;
-        }
-        if (!currentPayments?.length) {
-            const stored = await StorageService.getPayments();
-            if (stored?.length) currentPayments = stored;
-        }
-
-        const booking = currentBookings?.find(b => b.userId === userId && b.status === 'Confirmed') || null;
-        const pgData = booking ? currentPgs?.find(p => p.id === booking.pgId) : null;
-        const userPmts = currentPayments?.filter(p => p.userId === userId) || [];
+        const booking = (bookings || []).find(b => b.userId === userId && b.status === 'active') || null;
+        const pgData = booking ? (pgs || []).find(p => p.id === booking.pgId) : null;
+        const userPmts = (payments || []).filter(p => p.userId === userId);
 
         setActiveBooking(booking);
         setPg(pgData);
@@ -87,7 +69,7 @@ export default function MyPGScreen({ navigation }) {
 
     const now = new Date();
     const thisMonthPaid = userPayments.some(
-        p => p.status === 'paid' && new Date(p.date).getMonth() === now.getMonth() && new Date(p.date).getFullYear() === now.getFullYear(),
+        p => p.status === 'paid' && p.month === now.getMonth() + 1 && p.year === now.getFullYear(),
     );
 
     const activeLeaveRequest = leaveRequests?.find(
@@ -325,7 +307,7 @@ export default function MyPGScreen({ navigation }) {
                                             {monthNames[payment.month - 1]} {payment.year}
                                         </Text>
                                         <Text style={styles.paymentDate}>
-                                            {new Date(payment.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                                            {new Date(payment.date || payment.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                                         </Text>
                                     </View>
                                 </View>

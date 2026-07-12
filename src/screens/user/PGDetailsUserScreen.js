@@ -31,7 +31,7 @@ const { width } = Dimensions.get("window");
 export default function PGDetailsUserScreen({ route, navigation }) {
   const { pg: initialPg } = route.params || {};
   const { user } = useAuth();
-  const { pgs, getFavoritesForUser, toggleFavorite, addReview, reviews } = useData();
+  const { pgs, getFavoritesForUser, toggleFavorite, addReview, reviews, bookings } = useData();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Find latest PG data from context
@@ -55,6 +55,9 @@ export default function PGDetailsUserScreen({ route, navigation }) {
 
   const pgReviews = (reviews || []).filter(r => r && (r.pgId === pg.id || r.pgId === pg._id));
   const isFavorite = getFavoritesForUser(user?.id)?.includes(pg.id || pg._id);
+  const alreadyBooked = (bookings || []).some(
+    b => b.userId === user?.id && (b.pgId === pg.id || b.pgId === pg._id) && b.status === 'active'
+  );
 
   const handleCall = () => {
     Alert.alert("Contact Owner", `Opening dialer for ${pg.name}...`);
@@ -74,6 +77,10 @@ export default function PGDetailsUserScreen({ route, navigation }) {
   };
 
   const handleBook = () => {
+    if (alreadyBooked) {
+      Alert.alert("Already Booked", "You already have a bed booked at this PG.");
+      return;
+    }
     if ((pg.vacantBeds || 0) <= 0) {
       Alert.alert("Fully Occupied", "Sorry, no beds are currently available.");
       return;
@@ -247,8 +254,15 @@ export default function PGDetailsUserScreen({ route, navigation }) {
           <TouchableOpacity style={styles.directionsButton} onPress={handleGetDirections} activeOpacity={0.8}>
             <Ionicons name="navigate" size={22} color={COLORS.black} />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.callButton, (pg.vacantBeds || 0) <= 0 && { backgroundColor: COLORS.gray }]} onPress={handleBook} activeOpacity={0.8}>
-            <Text style={styles.callButtonText}>{(pg.vacantBeds || 0) > 0 ? "Book Bed" : "Full"}</Text>
+          <TouchableOpacity
+            style={[styles.callButton, (alreadyBooked || (pg.vacantBeds || 0) <= 0) && { backgroundColor: COLORS.gray }]}
+            onPress={handleBook}
+            activeOpacity={0.8}
+            disabled={alreadyBooked}
+          >
+            <Text style={styles.callButtonText}>
+              {alreadyBooked ? "Booked" : (pg.vacantBeds || 0) > 0 ? "Book Bed" : "Full"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

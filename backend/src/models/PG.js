@@ -7,8 +7,8 @@ const pgSchema = new mongoose.Schema(
     city: { type: String },
     state: { type: String },
     location: {
-      lat: Number,
-      lng: Number,
+      latitude: Number,
+      longitude: Number,
     },
     totalRooms: { type: Number, default: 0 },
     occupiedRooms: { type: Number, default: 0 },
@@ -28,7 +28,7 @@ const pgSchema = new mongoose.Schema(
     adminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'approved', 'rejected', 'deactivated'],
       default: 'pending',
     },
   },

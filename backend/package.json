@@ -1,13 +1,13 @@
 {
   "name": "pg-finder-backend",
   "version": "1.0.0",
-  "description": "MERN backend API for PG Finder app",
+  "description": "REST API for the PG Finder app (Express + MongoDB)",
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "lint": "eslint src --ext .js",
-    "test": "node --test"
+    "lint": "eslint src tests",
+    "test": "node --test tests/"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -23,8 +23,7 @@
   },
   "devDependencies": {
     "eslint": "^9.16.0",
-    "eslint-config-airbnb-base": "^15.0.0",
-    "eslint-plugin-import": "^2.31.0",
+    "globals": "^15.0.0",
     "nodemon": "^3.1.9"
   },
   "private": true

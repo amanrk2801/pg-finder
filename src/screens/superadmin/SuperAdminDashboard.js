@@ -14,6 +14,7 @@ const { width } = Dimensions.get('window');
 
 const TABS = [
     { id: 'pending', label: 'PG Requests', icon: 'business' },
+    { id: 'manage', label: 'Manage PGs', icon: 'home' },
     { id: 'admins', label: 'Owners', icon: 'person-add' },
     { id: 'analytics', label: 'Analytics', icon: 'stats-chart' },
     { id: 'users', label: 'Users', icon: 'people' },
@@ -24,7 +25,7 @@ export default function SuperAdminDashboard() {
     const {
         pendingPgs, approvePendingPg, rejectPendingPg,
         pgs, bookings, users, payments, settings,
-        toggleUserStatus, updateSettings,
+        toggleUserStatus, updateSettings, deactivatePg, reactivatePg, deletePg,
         approveAdmin, rejectAdmin, loadAllData
     } = useData();
     const { logout } = useAuth();
@@ -32,7 +33,21 @@ export default function SuperAdminDashboard() {
     const [activeTab, setActiveTab] = useState('pending');
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [pendingAdmins, setPendingAdmins] = useState([]);
+    const [allPgs, setAllPgs] = useState([]);
     const [newFee, setNewFee] = useState(settings?.platformFee?.toString() || '5');
+
+    const fetchAllPgs = async () => {
+        try {
+            const data = await ApiClient.get('/pgs');
+            setAllPgs((data || []).filter(p => p.status !== 'pending'));
+        } catch (err) {
+            setAllPgs([]);
+        }
+    };
+
+    useEffect(() => {
+        fetchAllPgs();
+    }, [pgs]);
 
     const fetchPendingAdmins = async () => {
         try {
@@ -49,8 +64,38 @@ export default function SuperAdminDashboard() {
 
     const onRefresh = async () => {
         setIsRefreshing(true);
-        await Promise.all([loadAllData(), fetchPendingAdmins()]);
+        await Promise.all([loadAllData(), fetchPendingAdmins(), fetchAllPgs()]);
         setIsRefreshing(false);
+    };
+
+    const handleDeactivatePg = (id, name) => {
+        Alert.alert('Deactivate PG', `Take "${name}" offline? It will be hidden from users but not deleted.`, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Deactivate', style: 'destructive', onPress: async () => {
+                const success = await deactivatePg(id);
+                if (success) { Alert.alert('Success', 'PG deactivated.'); onRefresh(); }
+            }}
+        ]);
+    };
+
+    const handleReactivatePg = (id, name) => {
+        Alert.alert('Reactivate PG', `Make "${name}" live again for users?`, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Reactivate', onPress: async () => {
+                const success = await reactivatePg(id);
+                if (success) { Alert.alert('Success', 'PG reactivated.'); onRefresh(); }
+            }}
+        ]);
+    };
+
+    const handleDeletePg = (id, name) => {
+        Alert.alert('Delete PG', `Permanently delete "${name}"? This cannot be undone.`, [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: async () => {
+                const success = await deletePg(id);
+                if (success) { Alert.alert('Deleted', 'PG has been removed.'); onRefresh(); }
+            }}
+        ]);
     };
 
     const handleApproveAdminAcc = (id, email) => {
@@ -188,6 +233,54 @@ export default function SuperAdminDashboard() {
                                 </View>
                             )}
 
+                            {activeTab === 'manage' && (
+                                <View>
+                                    <View style={styles.sectionHeader}>
+                                        <Text style={styles.sectionTitle}>Onboarded PGs</Text>
+                                        <Text style={styles.sectionCount}>{(allPgs || []).length} properties</Text>
+                                    </View>
+                                    {(allPgs || []).length === 0 ? (
+                                        <View style={styles.emptyCard}>
+                                            <Ionicons name="home-outline" size={40} color={COLORS.gray} />
+                                            <Text style={styles.emptyText}>No onboarded PGs yet</Text>
+                                        </View>
+                                    ) : (
+                                        (allPgs || []).map(item => {
+                                            const id = item.id || item._id;
+                                            const isActive = item.status === 'approved';
+                                            return (
+                                                <View key={id} style={styles.requestCard}>
+                                                    <View style={styles.requestInfo}>
+                                                        <Text style={styles.requestTitle}>{item.name}</Text>
+                                                        <Text style={styles.requestSub}>{item.address}</Text>
+                                                        <Text style={styles.requestPrice}>₹{item.rent}/mo</Text>
+                                                        <View style={[styles.ownerBadge, !isActive && { backgroundColor: '#FDECEA' }]}>
+                                                            <Text style={[styles.ownerBadgeText, !isActive && { color: COLORS.error }]}>
+                                                                {isActive ? 'LIVE' : item.status.toUpperCase()}
+                                                            </Text>
+                                                        </View>
+                                                    </View>
+                                                    <View style={{ gap: 8 }}>
+                                                        {isActive ? (
+                                                            <TouchableOpacity style={styles.rejectAction} onPress={() => handleDeactivatePg(id, item.name)}>
+                                                                <Text style={[styles.actionText, { color: COLORS.error }]}>DEACTIVATE</Text>
+                                                            </TouchableOpacity>
+                                                        ) : (
+                                                            <TouchableOpacity style={styles.approveAction} onPress={() => handleReactivatePg(id, item.name)}>
+                                                                <Text style={styles.actionText}>REACTIVATE</Text>
+                                                            </TouchableOpacity>
+                                                        )}
+                                                        <TouchableOpacity style={styles.deleteAction} onPress={() => handleDeletePg(id, item.name)}>
+                                                            <Text style={[styles.actionText, { color: COLORS.white }]}>DELETE</Text>
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })
+                                    )}
+                                </View>
+                            )}
+
                             {activeTab === 'admins' && (
                                 <View>
                                     <View style={styles.sectionHeader}>
@@ -205,6 +298,8 @@ export default function SuperAdminDashboard() {
                                                 <View style={styles.requestInfo}>
                                                     <Text style={styles.requestTitle}>{item.email}</Text>
                                                     <Text style={styles.requestSub}>Contact: {item.phone || 'N/A'}</Text>
+                                                    <Text style={styles.requestSub}>Business Reg: {item.businessRegNumber || 'Not provided'}</Text>
+                                                    <Text style={styles.requestSub}>Ownership Proof: {item.ownershipProofRef || 'Not provided'}</Text>
                                                     <View style={styles.ownerBadge}><Text style={styles.ownerBadgeText}>Role: Admin</Text></View>
                                                 </View>
                                                 <View style={styles.dualActions}>
@@ -343,6 +438,8 @@ const styles = StyleSheet.create({
     requestSub: { fontSize: 13, color: COLORS.gray, marginBottom: 6 },
     requestPrice: { fontSize: 13, fontWeight: '700', color: COLORS.primary },
     approveAction: { backgroundColor: '#E8F5E9', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
+    rejectAction: { backgroundColor: '#FDECEA', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
+    deleteAction: { backgroundColor: COLORS.error, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
     actionText: { color: '#2E7D32', fontWeight: '900', fontSize: 11 },
     emptyCard: { backgroundColor: COLORS.white, borderRadius: 18, padding: 30, alignItems: 'center', marginTop: 10, ...SHADOWS.small },
     emptyText: { marginTop: 10, color: COLORS.gray, fontWeight: '600' },

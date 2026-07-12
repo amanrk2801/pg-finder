@@ -1,14 +1,10 @@
 import React, { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import StorageService from '../services/StorageService';
 import ApiClient from '../services/ApiClient';
-import { generateId } from '../utils/id';
 
 export const DataContext = createContext();
 
 const DEFAULT_SETTINGS = { platformFee: 5 };
-
-// FORCE REAL BACKEND DATA
-const USE_BACKEND = true;
 
 function normalizeFavoritesData(data) {
     if (!data) return {};
@@ -27,6 +23,8 @@ export const DataProvider = ({ children }) => {
     const [disputes, setDisputes] = useState([]);
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
     const [payments, setPayments] = useState([]);
+    const [ownerBookings, setOwnerBookings] = useState([]);
+    const [ownerPayments, setOwnerPayments] = useState([]);
     const [messMenus, setMessMenus] = useState([]);
     const [leaveRequests, setLeaveRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -41,10 +39,6 @@ export const DataProvider = ({ children }) => {
             return false;
         }
     }, []);
-
-    const savePgsInternal = useCallback(async (newPgs) => {
-        await persistAndSet(StorageService.savePgs.bind(StorageService), setPgs, newPgs);
-    }, [persistAndSet]);
 
     const loadAllData = useCallback(async (passedToken = null, passedType = null) => {
         try {
@@ -70,14 +64,16 @@ export const DataProvider = ({ children }) => {
             const opts = token ? { token } : {};
             
             try {
-                const [p, c, s] = await Promise.all([
+                const [p, c, s, m] = await Promise.all([
                     ApiClient.get('/pgs', opts),
                     ApiClient.get('/community'),
                     ApiClient.get('/settings'),
+                    ApiClient.get('/mess'),
                 ]);
                 pgData = p || [];
                 postsData = c || [];
                 settingsData = s || DEFAULT_SETTINGS;
+                messMenusData = m || [];
             } catch (err) {
                 console.warn('Public/PG data fetch failed:', err.message);
             }
@@ -98,6 +94,15 @@ export const DataProvider = ({ children }) => {
 
                     if (userType === 'superadmin') {
                         usersData = await ApiClient.get('/auth/users', opts).catch(() => []);
+                    }
+
+                    if (userType === 'admin' || userType === 'superadmin') {
+                        const [ob, op] = await Promise.all([
+                            ApiClient.get('/bookings/owner', opts).catch(() => []),
+                            ApiClient.get('/payments/owner', opts).catch(() => []),
+                        ]);
+                        setOwnerBookings(ob || []);
+                        setOwnerPayments(op || []);
                     }
                 } catch (err) {
                     console.warn('Private data fetch failed:', err.message);
@@ -157,24 +162,33 @@ export const DataProvider = ({ children }) => {
                 return true;
             }
         } catch (err) {
-            console.error('[DataContext] updatePg Error:', err.message);
+            console.warn('[DataContext] updatePg Error:', err.message);
         }
         return false;
     }, []);
 
     const deletePg = useCallback(async (id) => {
-        setPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
-        setPendingPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
-        return true;
+        try {
+            await ApiClient.delete(`/pgs/${id}`);
+            setPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+            setPendingPgs(prev => (prev || []).filter(p => p.id !== id && p._id !== id));
+            return true;
+        } catch (err) {
+            console.warn('[DataContext] deletePg Error:', err.message);
+            return false;
+        }
     }, []);
+
+    const deactivatePg = useCallback(async (id) => updatePg(id, { status: 'deactivated' }), [updatePg]);
+    const reactivatePg = useCallback(async (id) => updatePg(id, { status: 'approved' }), [updatePg]);
 
     const addBooking = useCallback(async (userId, pgId, { monthlyRent } = {}) => {
         const booking = await ApiClient.post('/bookings', { pgId, monthlyRent });
         if (booking) {
             setBookings(prev => [...(prev || []), booking]);
-            return true;
+            return booking;
         }
-        return false;
+        return null;
     }, []);
 
     const updateBooking = useCallback(async (bookingId, updates) => {
@@ -346,7 +360,8 @@ export const DataProvider = ({ children }) => {
     const contextValue = useMemo(() => ({
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
         settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
-        getFavoritesForUser, addPg, updatePg, deletePg, addBooking, updateBooking,
+        ownerBookings, ownerPayments,
+        getFavoritesForUser, addPg, updatePg, deletePg, deactivatePg, reactivatePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
         toggleUserStatus, approveAdmin, rejectAdmin, addDispute, updateDisputeStatus, updateSettings,
@@ -356,7 +371,8 @@ export const DataProvider = ({ children }) => {
     }), [
         pgs, bookings, reviews, communityPosts, pendingPgs, users, disputes,
         settings, payments, messMenus, leaveRequests, isLoading, favoritesByUser,
-        getFavoritesForUser, addPg, updatePg, deletePg, addBooking, updateBooking,
+        ownerBookings, ownerPayments,
+        getFavoritesForUser, addPg, updatePg, deletePg, deactivatePg, reactivatePg, addBooking, updateBooking,
         clearBookings, toggleFavorite, addReview, addCommunityPost, updateCommunityPost,
         deleteCommunityPost, addPendingPg, approvePendingPg, rejectPendingPg,
         toggleUserStatus, approveAdmin, rejectAdmin, addDispute, updateDisputeStatus, updateSettings,
