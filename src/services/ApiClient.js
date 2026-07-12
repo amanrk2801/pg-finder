@@ -1,7 +1,5 @@
 import StorageService from './StorageService';
-
-// HARDCODED IP FOR MOBILE TESTING
-const API_BASE_URL = 'http://192.168.0.113:4000/api';
+import { API_BASE_URL } from '../constants/config';
 
 /**
  * Recursively convert MongoDB _id to id for frontend compatibility
@@ -63,7 +61,7 @@ async function request(path, options = {}) {
     const json = await res.json();
     return normalize(json);
   } catch (err) {
-    console.error(`[ApiClient] Fetch Error for ${url}:`, err.message);
+    console.warn(`[ApiClient] Fetch Error for ${url}:`, err.message);
     throw err;
   }
 }

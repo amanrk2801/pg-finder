@@ -67,7 +67,12 @@ export default function LoginScreen({ navigation }) {
                 const currentSession = await login.user; // Note: useAuth provides user/userType directly
             }
         } catch (err) {
-            Alert.alert('Login Error', err.message || 'Something went wrong');
+            const message = /invalid credentials/i.test(err.message)
+                ? 'The email or password you entered is incorrect. Please try again.'
+                : /network/i.test(err.message)
+                    ? 'Unable to connect. Please check your internet connection and try again.'
+                    : 'Something went wrong. Please try again.';
+            Alert.alert('Login Failed', message);
         } finally {
             setIsLoggingIn(false);
         }

@@ -15,21 +15,27 @@ export default function PostCard({ post, currentUserId, onDelete }) {
     const isOwner = post.userId === currentUserId;
 
     const handleContact = () => {
-        Alert.alert(
-            "Contact",
-            `Reach out to ${post.authorName} at:\n${post.contactInfo}`,
-            [
-                { text: "Copy Email", onPress: () => { /* In a real app, copy to clipboard */ Alert.alert("Copied!"); } },
-                { text: "Close", style: "cancel" }
-            ]
+        const digits = (post.contactInfo || '').replace(/\D/g, '');
+        if (digits.length < 10) {
+            Alert.alert("Contact", `Reach out to ${post.authorName || 'the poster'} at:\n${post.contactInfo}`);
+            return;
+        }
+        const phone = digits.length > 10 ? digits : `91${digits}`;
+        const message = `Hi, I saw your post "${post.title}" on PG Finder Community and I'm interested. Could you share more details?`;
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+        Linking.openURL(url).catch(() =>
+            Alert.alert("Error", "Could not open WhatsApp. Please make sure it's installed.")
         );
     };
 
-    const formattedDate = new Date(post.date).toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric'
-    });
+    const postDate = new Date(post.date || post.createdAt);
+    const formattedDate = Number.isNaN(postDate.getTime())
+        ? ''
+        : postDate.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
 
     const getCategoryIcon = (category) => {
         switch (category) {
@@ -63,10 +69,10 @@ export default function PostCard({ post, currentUserId, onDelete }) {
             <View style={styles.header}>
                 <View style={styles.userInfo}>
                     <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>{post.authorName.charAt(0).toUpperCase()}</Text>
+                        <Text style={styles.avatarText}>{(post.authorName || 'U').charAt(0).toUpperCase()}</Text>
                     </View>
                     <View>
-                        <Text style={styles.authorName}>{post.authorName}</Text>
+                        <Text style={styles.authorName}>{post.authorName || 'Unknown User'}</Text>
                         <Text style={styles.date}>{formattedDate}</Text>
                     </View>
                 </View>
@@ -96,7 +102,7 @@ export default function PostCard({ post, currentUserId, onDelete }) {
                 </View>
 
                 <TouchableOpacity style={styles.contactButton} onPress={handleContact}>
-                    <Text style={styles.contactButtonText}>Contact</Text>
+                    <Text style={styles.contactButtonText}>WhatsApp</Text>
                 </TouchableOpacity>
             </View>
         </View>

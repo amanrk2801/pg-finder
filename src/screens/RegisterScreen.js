@@ -35,6 +35,8 @@ export default function RegisterScreen({ navigation }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [selectedType, setSelectedType] = useState('user'); // Default to user
+  const [businessRegNumber, setBusinessRegNumber] = useState('');
+  const [ownershipProofRef, setOwnershipProofRef] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
   const { register } = useAuth();
 
@@ -43,6 +45,8 @@ export default function RegisterScreen({ navigation }) {
   const phoneInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const confirmPasswordInputRef = useRef(null);
+  const businessRegInputRef = useRef(null);
+  const ownershipProofInputRef = useRef(null);
 
   const isValidEmail = (value) => /[^\s@]+@[^\s@]+\.[^\s@]+/.test(value);
 
@@ -74,21 +78,34 @@ export default function RegisterScreen({ navigation }) {
       return;
     }
 
+    if (selectedType === 'admin' && (!businessRegNumber.trim() || !ownershipProofRef.trim())) {
+      Alert.alert('Error', 'Please provide your business registration number and a property ownership proof reference. This helps us verify PG owners before listing goes live.');
+      return;
+    }
+
     Keyboard.dismiss();
     setIsRegistering(true);
 
     try {
       // Pass the selectedType (user or admin)
-      const success = await register(normalizedEmail, password, selectedType, name, phone);
+      const success = await register(normalizedEmail, password, selectedType, name, phone, {
+        businessRegNumber: businessRegNumber.trim(),
+        ownershipProofRef: ownershipProofRef.trim(),
+      });
       if (!success) {
         Alert.alert('Registration failed', 'Unable to create your account. Please try again.');
       }
     } catch (err) {
-      Alert.alert('Registration Error', err.message || 'Something went wrong');
+      const message = /already exists/i.test(err.message)
+        ? 'An account with this email already exists. Please sign in instead.'
+        : /network/i.test(err.message)
+          ? 'Unable to connect. Please check your internet connection and try again.'
+          : 'Something went wrong. Please try again.';
+      Alert.alert('Registration Failed', message);
     } finally {
       setIsRegistering(false);
     }
-  }, [email, password, confirmPassword, name, phone, selectedType, register]);
+  }, [email, password, confirmPassword, name, phone, selectedType, businessRegNumber, ownershipProofRef, register]);
 
   return (
     <KeyboardAvoidingView
@@ -195,9 +212,38 @@ export default function RegisterScreen({ navigation }) {
             onChangeText={setConfirmPassword}
             icon="lock-closed-outline"
             secureTextEntry
-            returnKeyType="done"
-            onSubmitEditing={handleRegister}
+            returnKeyType={selectedType === 'admin' ? 'next' : 'done'}
+            onSubmitEditing={() => (selectedType === 'admin' ? businessRegInputRef.current?.focus() : handleRegister())}
           />
+
+          {selectedType === 'admin' && (
+            <>
+              <Text style={styles.verificationNote}>
+                Owner verification: we need these details to confirm you're authorized to list this property. Your account stays pending until a Super Admin reviews them.
+              </Text>
+              <CustomInput
+                ref={businessRegInputRef}
+                label="Business Registration Number"
+                placeholder="e.g., GST/Udyam/Trade License No."
+                value={businessRegNumber}
+                onChangeText={setBusinessRegNumber}
+                icon="document-text-outline"
+                autoCapitalize="characters"
+                returnKeyType="next"
+                onSubmitEditing={() => ownershipProofInputRef.current?.focus()}
+              />
+              <CustomInput
+                ref={ownershipProofInputRef}
+                label="Property Ownership Proof Reference"
+                placeholder="e.g., Property tax receipt / rent agreement no."
+                value={ownershipProofRef}
+                onChangeText={setOwnershipProofRef}
+                icon="home-outline"
+                returnKeyType="done"
+                onSubmitEditing={handleRegister}
+              />
+            </>
+          )}
 
           <CustomButton
             title="Create Account"
@@ -287,6 +333,10 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   welcomeText: { ...TYPOGRAPHY.h1, color: COLORS.black, marginBottom: SPACING.lg },
+  verificationNote: {
+    fontSize: 12, color: COLORS.gray, backgroundColor: COLORS.backgroundGray,
+    borderRadius: BORDER_RADIUS.md, padding: SPACING.sm, marginBottom: SPACING.md, lineHeight: 17,
+  },
   typeSelector: {
     flexDirection: 'row', marginBottom: SPACING.xl,
     backgroundColor: COLORS.backgroundGray, borderRadius: BORDER_RADIUS.xl, padding: 6,

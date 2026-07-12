@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, StatusBar, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useAuth, useData } from '../../hooks';
-import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { COLORS, SPACING, TYPOGRAPHY, BORDER_RADIUS } from '../../constants/theme';
 import { CustomInput, CustomButton, ScreenHeader, ImagePickerSection, PillSelector, GenderSelector } from '../../components/common';
 import {
     FACILITY_OPTIONS, SAFETY_OPTIONS, DEFAULT_PLACEHOLDER_IMAGES,
@@ -21,15 +23,52 @@ export default function AddPGScreen({ navigation }) {
     const [selectedImages, setSelectedImages] = useState([]);
     const [facilities, setFacilities] = useState({});
     const [safetyMeasures, setSafetyMeasures] = useState({});
+    const [location, setLocation] = useState(null);
+    const [isLocating, setIsLocating] = useState(false);
 
     const updateField = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) setErrors(prev => ({ ...prev, [field]: null }));
     };
 
+    const handleCaptureLocation = async () => {
+        setIsLocating(true);
+        try {
+            const { status } = await Location.requestForegroundPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Required', 'Please allow location access so we can pin your PG accurately on the map.');
+                return;
+            }
+            const position = await Location.getCurrentPositionAsync({});
+            const { latitude, longitude } = position.coords;
+            setLocation({ latitude, longitude });
+
+            const [place] = await Location.reverseGeocodeAsync({ latitude, longitude }).catch(() => []);
+            if (place) {
+                const addressParts = [
+                    place.name, place.street, place.district, place.city,
+                    place.subregion, place.region, place.postalCode,
+                ].filter(Boolean);
+                const uniqueParts = [...new Set(addressParts)];
+                if (uniqueParts.length) {
+                    updateField('address', uniqueParts.join(', '));
+                }
+            }
+        } catch (err) {
+            Alert.alert('Error', 'Could not fetch your current location. Please try again.');
+        } finally {
+            setIsLocating(false);
+        }
+    };
+
     const handleSubmit = async () => {
         const { isValid, errors: newErrors } = validatePGForm(formData);
         if (!isValid) { setErrors(newErrors); return; }
+
+        if (!location) {
+            Alert.alert('Location Required', 'Please capture the property\'s current location before publishing, so it shows accurately on the map.');
+            return;
+        }
 
         const pgData = {
             ...formData,
@@ -41,7 +80,7 @@ export default function AddPGScreen({ navigation }) {
             facilities: facilitiesMapToArray(facilities),
             safetyMeasures: safetyMapToArray(safetyMeasures),
             adminId: user.id,
-            location: { latitude: 18.5204, longitude: 73.8567 },
+            location,
             images: selectedImages.length > 0 ? selectedImages : DEFAULT_PLACEHOLDER_IMAGES,
             rating: 0,
             reviews: 0,
@@ -72,6 +111,30 @@ export default function AddPGScreen({ navigation }) {
                     onChangeText={(t) => updateField('address', t)}
                     placeholder="Enter complete street address" multiline numberOfLines={3} error={errors.address}
                 />
+
+                <TouchableOpacity
+                    style={[styles.locationBtn, location && styles.locationBtnCaptured]}
+                    onPress={handleCaptureLocation}
+                    disabled={isLocating}
+                >
+                    {isLocating ? (
+                        <ActivityIndicator color={location ? COLORS.secondary : COLORS.primary} />
+                    ) : (
+                        <Ionicons
+                            name={location ? 'checkmark-circle' : 'location-outline'}
+                            size={20}
+                            color={location ? COLORS.secondary : COLORS.primary}
+                        />
+                    )}
+                    <Text style={[styles.locationBtnText, location && { color: COLORS.secondary }]}>
+                        {location
+                            ? `Location Captured (${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)})`
+                            : 'Capture Current Location *'}
+                    </Text>
+                </TouchableOpacity>
+                {!location && (
+                    <Text style={styles.locationHint}>Stand at the property before tapping — this pins it accurately on the map for users nearby.</Text>
+                )}
 
                 <View style={styles.row}>
                     <View style={styles.halfInput}>
@@ -143,4 +206,12 @@ const styles = StyleSheet.create({
     sectionHeader: { ...TYPOGRAPHY.h4, marginTop: SPACING.lg, marginBottom: SPACING.md },
     row: { flexDirection: 'row', gap: SPACING.md },
     halfInput: { flex: 1 },
+    locationBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        borderWidth: 1.5, borderColor: COLORS.primary, borderStyle: 'dashed',
+        borderRadius: BORDER_RADIUS.lg, paddingVertical: 14, marginBottom: 4, gap: 8,
+    },
+    locationBtnCaptured: { borderColor: COLORS.secondary, borderStyle: 'solid', backgroundColor: '#F0FFF4' },
+    locationBtnText: { fontWeight: '700', color: COLORS.primary, fontSize: 13 },
+    locationHint: { fontSize: 11, color: COLORS.gray, marginBottom: SPACING.md, marginTop: 4 },
 });

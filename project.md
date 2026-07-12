@@ -39,7 +39,7 @@ A professional high-end PG Finder ecosystem with a React Native (Expo) frontend 
 
 ## 3. Core Credentials & Endpoints
 
-- **Backend API:** `http://192.168.0.113:4000/api`
+- **Backend API:** set via `EXPO_PUBLIC_API_BASE_URL` in `.env` (your machine's LAN IP, e.g. `http://192.168.x.x:4000/api`)
 - **Super Admin Login:**
   - Email: `admin@pgfinder.com`
   - Password: `admin123`

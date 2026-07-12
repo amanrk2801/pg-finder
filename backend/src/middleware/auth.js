@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('../config/env');
 
 const auth = (roles = [], isOptional = false) => (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -10,18 +11,17 @@ const auth = (roles = [], isOptional = false) => (req, res, next) => {
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'change-me-in-production';
-    const decoded = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
 
     if (roles.length && !roles.includes(decoded.type)) {
       return res.status(403).json({ message: 'Access denied: insufficient permissions' });
     }
 
-    next();
-  } catch (err) {
+    return next();
+  } catch {
     if (isOptional) return next();
-    res.status(401).json({ message: 'Invalid or expired token' });
+    return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 

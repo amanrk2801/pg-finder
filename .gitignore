@@ -39,3 +39,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# env files (secrets) — commit .env.example instead
+.env
+backend/.env
+
+# AI tooling scaffolding
+_bmad/
+_bmad-output/
+.gemini/
+.claude/

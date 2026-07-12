@@ -62,7 +62,7 @@ export default function MyBookingsScreen({ navigation }) {
                                     <View style={styles.statusBadge}>
                                         <Text style={styles.statusText}>{booking.status}</Text>
                                     </View>
-                                    <Text style={styles.dateText}>{formatDate(booking.date)}</Text>
+                                    <Text style={styles.dateText}>{formatDate(booking.date || booking.createdAt)}</Text>
                                 </View>
                                 <PGCard
                                     pg={pg}
