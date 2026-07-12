@@ -10,6 +10,10 @@ const { UPLOAD_DIR } = require('./controllers/upload.controller');
 
 const app = express();
 
+// Behind Render/other proxies: makes req.protocol report https correctly
+// (upload URLs are built from it).
+app.set('trust proxy', 1);
+
 app.use(helmet({
   contentSecurityPolicy: false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
